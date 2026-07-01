@@ -6,6 +6,7 @@ import {InstalledPlugin} from './plugins/plugin';
 import {ShareService} from './plugins/service';
 import {ShareServiceContext} from './plugins/service-context';
 import {prettifyFormat} from './utils/formats';
+import {GIF_MAX_FPS} from './converters/utils';
 import {ipcMain as ipc} from 'electron-better-ipc';
 import {setExportMenuItemState} from './menus/utils';
 import {Video} from './video';
@@ -80,7 +81,10 @@ export default class Export extends (EventEmitter as new () => TypedEventEmitter
     Export.addExport(this);
     video.generatePreviewImage();
 
-    this.description = `${this.conversionOptions.width} x ${this.conversionOptions.height} at ${this.conversionOptions.fps} FPS`;
+    // GIF exports are capped at GIF_MAX_FPS by the converter, so report the
+    // rate the output will actually have rather than the requested fps.
+    const displayFps = format === Format.gif ? Math.min(this.conversionOptions.fps, GIF_MAX_FPS) : this.conversionOptions.fps;
+    this.description = `${this.conversionOptions.width} x ${this.conversionOptions.height} at ${displayFps} FPS`;
 
     this.context = new ShareServiceContext({
       plugin: options.plugin,
