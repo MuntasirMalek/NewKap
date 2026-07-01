@@ -4,5 +4,7 @@ node_modules
 /app/dist
 /dist
 /dist-js
-# gifski is downloaded + checksum-verified on postinstall, not committed.
-vendor/gifski/
+vendor/*
+# gifski is downloaded on postinstall; the mac-* helper binaries are custom
+# universal rebuilds that must be committed (see scripts/build-mac-helpers.sh)
+!vendor/mac-helpers
