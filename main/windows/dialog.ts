@@ -1,6 +1,7 @@
 'use strict';
 
 import {BrowserWindow, Rectangle} from 'electron';
+import {enable as enableRemote} from '@electron/remote/main';
 import {ipcMain as ipc} from 'electron-better-ipc';
 import {loadRoute} from '../utils/routes';
 import {windowManager} from './manager';
@@ -28,10 +29,11 @@ const showDialog = async (options: DialogOptions) => new Promise<number | void>(
       nodeIntegration: true,
       enableRemoteModule: true,
       contextIsolation: false
-    }
+    } as any
   });
 
   loadRoute(dialogWindow, 'dialog');
+  enableRemote(dialogWindow.webContents);
 
   let buttons: any[];
   let wasActionTaken;

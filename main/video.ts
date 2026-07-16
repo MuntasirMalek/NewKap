@@ -46,8 +46,12 @@ export class Video {
 
     Video.all.set(this.filePath, this);
 
-    this.readyPromise = this.collectInfo();
-    this.previewReadyPromise = this.readyPromise.then(async () => this.getPreviewPath());
+    const readyPromise = this.collectInfo();
+    this.readyPromise = readyPromise;
+    this.previewReadyPromise = (async () => {
+      await readyPromise;
+      return this.getPreviewPath();
+    })();
   }
 
   static fromId(id: string) {

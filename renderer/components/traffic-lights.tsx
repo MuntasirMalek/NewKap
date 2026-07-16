@@ -1,4 +1,4 @@
-import {remote} from 'electron';
+const remote = require('../utils/electron-remote');
 import {useState, useEffect, FunctionComponent} from 'react';
 
 interface TrafficLightsProps {
@@ -72,6 +72,7 @@ const TrafficLights: FunctionComponent<TrafficLightsProps> = props => {
             align-items: center;
             height: max-content;
             margin-left: 12px;
+            -webkit-app-region: no-drag;
           }
 
           .traffic-light {

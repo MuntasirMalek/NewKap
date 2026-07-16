@@ -19,6 +19,7 @@ type SharePlugin = {
 const isFormatMuted = (format: Format) => ['gif', 'apng'].includes(format);
 
 const useOptions = () => {
+  const defaultExportFormat = require('../../utils/electron-remote').require('./common/settings').settings.get('defaultExportFormat');
   const {fps: originalFps} = useEditorWindowState();
   const {
     state: {
@@ -94,7 +95,7 @@ const useOptions = () => {
       return;
     }
 
-    const firstFormat = formats[0];
+    const firstFormat = formats.find(option => option.format === defaultExportFormat) ?? formats[0];
     const formatName = firstFormat.format;
 
     setFormat(formatName);

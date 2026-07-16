@@ -27,8 +27,8 @@ const IconMenu: FunctionComponent<IconMenuProps> = props => {
         y: Math.round(bottom)
       });
     } else {
-      const {api} = require('electron-util');
-      const menu = api.Menu.buildFromTemplate(props.template);
+      const remote = require('../utils/electron-remote');
+      const menu = remote.Menu.buildFromTemplate(props.template);
       menu.popup({
         x: Math.round(left),
         y: Math.round(bottom)

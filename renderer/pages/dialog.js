@@ -3,6 +3,7 @@ import Icon from '../components/dialog/icon';
 import Body from '../components/dialog/body';
 import React, {useState, useEffect, useRef, useCallback} from 'react';
 import {ipcRenderer as ipc} from 'electron-better-ipc';
+import answerMain from '../utils/answer-main';
 
 let measureResolve;
 
@@ -20,7 +21,7 @@ const Dialog = () => {
   }, [data, isDisabled, setIsDisabled]);
 
   useEffect(() => {
-    return ipc.answerMain('data', async newData => new Promise(resolve => {
+    return answerMain('data', async newData => new Promise(resolve => {
       setData(newData);
       setMeasureSize(true);
       measureResolve = resolve;

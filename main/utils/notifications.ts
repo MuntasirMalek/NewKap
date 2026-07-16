@@ -1,4 +1,5 @@
 import {Notification, NotificationConstructorOptions, NotificationAction, app} from 'electron';
+import {settings} from '../common/settings';
 
 // Need to persist the notifications, otherwise it is garbage collected and the actions don't trigger
 // https://github.com/electron/electron/issues/12690
@@ -20,7 +21,17 @@ type NotificationPromise = Promise<void> & {
 };
 
 export const notify = (options: NotificationOptions): NotificationPromise => {
-  const notification = new Notification(options);
+  if (!settings.get('showNotifications')) {
+    const promise = Promise.resolve() as NotificationPromise;
+    promise.show = () => undefined;
+    promise.close = () => undefined;
+    return promise;
+  }
+
+  const notification = new Notification({
+    ...options,
+    silent: options.silent ?? !settings.get('playNotificationSound')
+  });
 
   notifications.add(notification);
 
@@ -48,9 +59,12 @@ export const notify = (options: NotificationOptions): NotificationPromise => {
     });
   });
 
-  promise.then(() => {
+  const removeWhenSettled = async () => {
+    await promise;
     notifications.delete(notification);
-  });
+  };
+
+  void removeWhenSettled();
 
   (promise as NotificationPromise).show = () => {
     notification.show();

@@ -27,10 +27,10 @@ const showPermissionError = async () => {
     buttons: ['Open System Settings', 'OK'],
     defaultId: 0,
     message: 'Screen Recording permission required',
-    detail: 'NewKap needs Screen Recording permission.\n\n' +
+    detail: 'Kap needs Screen Recording permission.\n\n' +
       '1. Open System Settings > Privacy & Security > Screen Recording\n' +
-      '2. Toggle NewKap ON\n' +
-      '3. Quit and relaunch NewKap'
+      '2. Toggle Kap ON\n' +
+      '3. Quit and relaunch Kap'
   });
 
   if (response === 0) {
@@ -38,7 +38,7 @@ const showPermissionError = async () => {
   }
 };
 
-// Start full-screen  no cropper windowrecording 
+// Start full-screen  no cropper windowrecording
 const handleRecordFullScreen = async () => {
   try {
     // Close cropper if it's open
@@ -57,8 +57,8 @@ const handleRecordFullScreen = async () => {
     console.log(`Full-screen recording started on display ${display.id} (${width}x${height})`);
   } catch (error: any) {
     console.error('Failed to start full-screen recording:', error);
-    const errorStr = String(error?.message || error);
-    if (errorStr.includes('Cannot Record') || errorStr.includes('-11805') || errorStr.includes('not authorized')) {
+    const errorString = String(error?.message || error);
+    if (errorString.includes('Cannot Record') || errorString.includes('-11805') || errorString.includes('not authorized')) {
       await showPermissionError();
     }
   }

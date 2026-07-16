@@ -1,4 +1,4 @@
-// TODO: Add interface to aperture-node for getting recording duration instead of using this https://github.com/wulkano/aperture-node/issues/29
+// Aperture-node does not expose recording duration yet: https://github.com/wulkano/aperture-node/issues/29
 let overallDuration = 0;
 let currentDurationStart = 0;
 

@@ -24,7 +24,7 @@ class General extends React.Component {
 
   componentDidMount() {
     this.setState({
-      showCursorSupported: electron.remote.require('macos-version').isGreaterThanOrEqualTo('10.13')
+      showCursorSupported: require('../../../utils/electron-remote').require('macos-version').isGreaterThanOrEqualTo('10.13')
     });
   }
 
@@ -42,6 +42,8 @@ class General extends React.Component {
       record60fps,
       enableShortcuts,
       loopExports,
+      showCountdown,
+      countdownDuration,
       toggleSetting,
       toggleRecordAudio,
       audioInputDeviceId,
@@ -54,6 +56,10 @@ class General extends React.Component {
       toggleShortcuts,
       category,
       lossyCompression,
+      recordingQuality,
+      defaultExportFormat,
+      showNotifications,
+      playNotificationSound,
       shortcuts,
       shortcutMap
     } = this.props;
@@ -68,6 +74,20 @@ class General extends React.Component {
     const kapturesDirPath = tildify(kapturesDir);
     const tabIndex = category === 'general' ? 0 : -1;
     const fpsOptions = [{label: '30 FPS', value: false}, {label: '60 FPS', value: true}];
+    const countdownOptions = [1, 3, 5, 10].map(seconds => ({label: `${seconds} sec`, value: seconds}));
+    const qualityOptions = [
+      {label: 'Standard', value: 'standard'},
+      {label: 'High', value: 'high'},
+      {label: 'Maximum', value: 'maximum'}
+    ];
+    const exportOptions = [
+      {label: 'MP4 (H.264)', value: 'mp4'},
+      {label: 'MP4 (H.265)', value: 'hevc'},
+      {label: 'MP4 (AV1)', value: 'av1'},
+      {label: 'GIF', value: 'gif'},
+      {label: 'APNG', value: 'apng'},
+      {label: 'WebM', value: 'webm'}
+    ];
 
     return (
       <Category>
@@ -132,10 +152,28 @@ class General extends React.Component {
           <Switch tabIndex={tabIndex} checked={loopExports} onClick={() => toggleSetting('loopExports')}/>
         </Item>
         <Item
+          key="showCountdown"
+          parentItem
+          title="Show countdown"
+          subtitle="Pause before recording begins"
+        >
+          <Switch tabIndex={tabIndex} checked={showCountdown} onClick={() => toggleSetting('showCountdown')}/>
+        </Item>
+        {
+          showCountdown &&
+          <Item key="countdownDuration" subtitle="Countdown duration">
+            <Select
+              tabIndex={tabIndex}
+              options={countdownOptions}
+              selected={countdownDuration}
+              onSelect={value => toggleSetting('countdownDuration', value)}/>
+          </Item>
+        }
+        <Item
           key="recordAudio"
           parentItem
-          title="Audio recording"
-          subtitle="Record audio from input device"
+          title="Audio source"
+          subtitle="Microphone or system-audio loopback device"
         >
           <Switch
             tabIndex={tabIndex}
@@ -166,6 +204,28 @@ class General extends React.Component {
             onSelect={value => toggleSetting('record60fps', value)}/>
         </Item>
         <Item
+          key="recordingQuality"
+          title="Recording quality"
+          subtitle="Higher quality uses more disk space"
+        >
+          <Select
+            tabIndex={tabIndex}
+            options={qualityOptions}
+            selected={recordingQuality}
+            onSelect={value => toggleSetting('recordingQuality', value)}/>
+        </Item>
+        <Item
+          key="defaultExportFormat"
+          title="Default export format"
+          subtitle="Initially selected in the editor"
+        >
+          <Select
+            tabIndex={tabIndex}
+            options={exportOptions}
+            selected={defaultExportFormat}
+            onSelect={value => toggleSetting('defaultExportFormat', value)}/>
+        </Item>
+        <Item
           key="allowAnalytics"
           title="Allow analytics"
           subtitle="Help us improve Kap by sending anonymous usage stats"
@@ -179,6 +239,23 @@ class General extends React.Component {
         >
           <Switch tabIndex={tabIndex} checked={openOnStartup} onClick={setOpenOnStartup}/>
         </Item>
+        <Item
+          key="showNotifications"
+          parentItem
+          title="Notifications"
+          subtitle="Show export and plugin notifications"
+        >
+          <Switch tabIndex={tabIndex} checked={showNotifications} onClick={() => toggleSetting('showNotifications')}/>
+        </Item>
+        {
+          showNotifications &&
+          <Item key="playNotificationSound" subtitle="Play notification sounds">
+            <Switch
+              tabIndex={tabIndex}
+              checked={playNotificationSound}
+              onClick={() => toggleSetting('playNotificationSound')}/>
+          </Item>
+        }
         <Item
           key="pickKapturesDir"
           title="Save to…"
@@ -220,6 +297,8 @@ General.propTypes = {
   openOnStartup: PropTypes.bool,
   allowAnalytics: PropTypes.bool,
   loopExports: PropTypes.bool,
+  showCountdown: PropTypes.bool,
+  countdownDuration: PropTypes.number,
   pickKapturesDir: PropTypes.elementType.isRequired,
   setOpenOnStartup: PropTypes.elementType.isRequired,
   updateShortcut: PropTypes.elementType.isRequired,
@@ -227,7 +306,11 @@ General.propTypes = {
   category: PropTypes.string,
   shortcutMap: PropTypes.object,
   shortcuts: PropTypes.object,
-  lossyCompression: PropTypes.bool
+  lossyCompression: PropTypes.bool,
+  recordingQuality: PropTypes.string,
+  defaultExportFormat: PropTypes.string,
+  showNotifications: PropTypes.bool,
+  playNotificationSound: PropTypes.bool
 };
 
 export default connect(
@@ -244,8 +327,14 @@ export default connect(
     openOnStartup,
     allowAnalytics,
     loopExports,
+    showCountdown,
+    countdownDuration,
     category,
     lossyCompression,
+    recordingQuality,
+    defaultExportFormat,
+    showNotifications,
+    playNotificationSound,
     shortcuts,
     shortcutMap
   }) => ({
@@ -260,8 +349,14 @@ export default connect(
     openOnStartup,
     allowAnalytics,
     loopExports,
+    showCountdown,
+    countdownDuration,
     category,
     lossyCompression,
+    recordingQuality,
+    defaultExportFormat,
+    showNotifications,
+    playNotificationSound,
     shortcuts,
     shortcutMap
   }),

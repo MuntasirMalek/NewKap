@@ -1,7 +1,8 @@
 import {DropdownArrowIcon, CancelIcon} from '../../../vectors';
 import classNames from 'classnames';
 import {useRef} from 'react';
-import {remote, MenuItemConstructorOptions, NativeImage} from 'electron';
+import {MenuItemConstructorOptions, NativeImage} from 'electron';
+const remote = require('../../../utils/electron-remote');
 
 type Option<T> = {
   label: string;

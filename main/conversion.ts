@@ -124,7 +124,9 @@ export default class Conversion extends (EventEmitter as new () => TypedEventEmi
       const {size} = await fs.promises.stat(filePath);
       this.finalSize = prettyBytes(size);
       this.emit('file-size', this.finalSize);
-    } catch {}
+    } catch (error) {
+      console.warn('[conversion] failed to read converted file size', {filePath, error});
+    }
   };
 
   private readonly start = () => {

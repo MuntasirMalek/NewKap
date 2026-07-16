@@ -139,7 +139,7 @@ export const cleanPastRecordings = () => {
 };
 
 export const cleanUpRecordingPlugins = (usedPlugins: ActiveRecording['plugins']) => {
-  const recordingPlugins = plugins.recordingPlugins;
+  const {recordingPlugins} = plugins;
 
   for (const pluginName of Object.keys(usedPlugins)) {
     const plugin = recordingPlugins.find(p => p.name === pluginName);
@@ -219,7 +219,9 @@ const knownErrors = [{
       ]);
 
       return outputPath;
-    } catch {}
+    } catch (error) {
+      console.error('[recording-history] failed to repair recording', {filePath, error});
+    }
   }
 }];
 

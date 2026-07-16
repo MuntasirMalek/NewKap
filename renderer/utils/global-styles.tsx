@@ -1,6 +1,6 @@
 import {useState, useEffect, useMemo} from 'react';
 import useDarkMode from '../hooks/dark-mode';
-import {remote} from 'electron';
+const remote = require('./electron-remote');
 
 const GlobalStyles = () => {
   const [accentColor, setAccentColor] = useState(remote.systemPreferences.getAccentColor());

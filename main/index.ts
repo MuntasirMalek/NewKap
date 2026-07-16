@@ -1,53 +1,61 @@
-// ============================================================================
-// NewKap — Fast Phased Startup
-// Phase 1: Show tray icon immediately (< 500ms)
-// Phase 2: Load renderer + window modules (background)
-// Phase 3: Open cropper + deferred init (background)
-// ============================================================================
-
-import {app, Tray, dialog} from 'electron';
+import {app, BrowserWindow, Tray, Menu, dialog, nativeImage} from 'electron';
 import path from 'path';
+import fs from 'fs';
+import {initialize as initializeRemote} from '@electron/remote/main';
+import {mark} from './utils/perf';
 
-// ── Block "Move to Applications folder" dialog permanently ──────────────────
-// Multiple copies of electron-util exist in dependencies, some using
-// showMessageBoxSync, others showMessageBox (async), and others showErrorBox.
-// We intercept ALL dialog methods to block any "Move to Applications" dialog.
+mark('main module entered');
+
+app.setName('Kap');
+process.title = 'Kap';
+
+if (process.platform === 'darwin') {
+  app.setActivationPolicy('accessory');
+
+  const preserveMenuBarPolicy = () => {
+    app.setActivationPolicy('accessory');
+  };
+
+  app.on('activate', preserveMenuBarPolicy);
+  app.on('browser-window-focus', preserveMenuBarPolicy);
+  app.on('browser-window-created', (_event, window) => {
+    window.on('show', preserveMenuBarPolicy);
+  });
+}
 
 const _origShowMessageBoxSync = dialog.showMessageBoxSync;
-dialog.showMessageBoxSync = function(this: any) {
-  // eslint-disable-next-line prefer-rest-params
-  const args = Array.from(arguments);
-  const opts: any = args.length === 1 ? args[0] : args[1];
-  if (opts?.message?.includes('Move to Applications folder') || opts?.message?.includes('Applications folder')) {
+dialog.showMessageBoxSync = ((...args: any[]) => {
+  const options: any = args.length === 1 ? args[0] : args[1];
+  if (options?.message?.includes('Move to Applications folder') || options?.message?.includes('Applications folder')) {
     return 1;
   }
+
   return _origShowMessageBoxSync.apply(dialog, args as any);
-} as any;
+}) as any;
 
 const _origShowMessageBox = dialog.showMessageBox;
-dialog.showMessageBox = function(this: any) {
-  // eslint-disable-next-line prefer-rest-params
-  const args = Array.from(arguments);
-  const opts: any = args.length === 1 ? args[0] : args[1];
-  if (opts?.message?.includes('Move to Applications folder') || opts?.message?.includes('Applications folder')) {
+dialog.showMessageBox = (async (...args: any[]) => {
+  const options: any = args.length === 1 ? args[0] : args[1];
+  if (options?.message?.includes('Move to Applications folder') || options?.message?.includes('Applications folder')) {
     return Promise.resolve({response: 1, checkboxChecked: false});
   }
+
   return _origShowMessageBox.apply(dialog, args as any);
-} as any;
+}) as any;
 
 const _origShowErrorBox = dialog.showErrorBox;
-dialog.showErrorBox = function(title: string, content: string) {
+dialog.showErrorBox = ((title: string, content: string) => {
   if (title?.includes('Move to Applications folder') || title?.includes('Applications folder')) {
-    return; // Silently block
+    return;
   }
-  return _origShowErrorBox.call(dialog, title, content);
-} as any;
 
-// Override isInApplicationsFolder for any direct main-process checks
+  return _origShowErrorBox.call(dialog, title, content);
+}) as any;
+
 Object.defineProperty(app, 'isInApplicationsFolder', {
   value: () => true,
   writable: true,
-  configurable: true,
+  configurable: true
 });
 
 const filesToOpen: string[] = [];
@@ -66,15 +74,12 @@ app.on('open-file', (event, filePath) => {
   }
 });
 
-// Queue deep links received before app is fully initialized
 let pendingDeepLink: string | undefined;
 let deepLinkReady = false;
-let hadDeepLinkOnStartup = false;
 
 export const markDeepLinkReady = () => {
   deepLinkReady = true;
   if (pendingDeepLink) {
-    hadDeepLinkOnStartup = true;
     const url = pendingDeepLink;
     pendingDeepLink = undefined;
     require('./utils/deep-linking').handleDeepLink(url);
@@ -93,58 +98,111 @@ app.on('will-finish-launching', () => {
 });
 
 app.on('window-all-closed', () => {
-  app.dock.hide();
+  app.dock?.hide();
 });
 
-// ── Phase 1: Instant tray ───────────────────────────────────────────────────
 (async () => {
   await app.whenReady();
+  mark('app.whenReady resolved');
 
-  app.dock.hide();
-  app.setAboutPanelOptions({copyright: 'Copyright © NewKap Contributors'});
+  if (process.platform === 'darwin') {
+    app.dock?.setIcon(nativeImage.createFromPath(path.join(app.getAppPath(), 'build', 'icon.icns')));
+    app.setActivationPolicy('accessory');
+  }
 
-  // Show tray icon IMMEDIATELY — before loading any heavy modules
-  const tray = new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
+  // Initialize @electron/remote compatibility bridge.
+  // Each BrowserWindow must also call enable() on its webContents.
+  initializeRemote();
 
-  // Temporary click handler until full tray module loads
-  let trayReady = false;
-  tray.on('click', () => {
-    if (trayReady) {
-      return; // Real handler is active
+  // @electron/remote cannot resolve relative app modules from Electron's root
+  // module on Electron 28+. Resolve the existing app-owned calls here.
+  (app as any).on('remote-require', (event: any, _contents: Electron.WebContents, moduleName: string) => {
+    try {
+      event.returnValue = require(moduleName);
+    } catch (error) {
+      console.error(`[remote] failed to require ${moduleName}`, error);
+      throw error;
     }
-
-    // If clicked before ready, wait for init then open
-    const waitForReady = setInterval(() => {
-      if (trayReady) {
-        clearInterval(waitForReady);
-        const {windowManager} = require('./windows/manager');
-        windowManager.cropper?.open();
-      }
-    }, 100);
   });
 
-  // ── Yield helper: breaks up synchronous work so macOS event loop stays responsive
-  const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+  app.dock?.hide();
+  app.setAboutPanelOptions({
+    applicationName: 'Kap',
+    applicationVersion: app.getVersion(),
+    copyright: 'Copyright © Kap Contributors'
+  });
 
-  // ── Phase 2: Background initialization (yielding between heavy requires) ──
+  const tray = new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
+  mark('tray constructed');
+
+  let trayReady = false;
+  let pendingOpenCropper = false;
+
+  tray.on('click', () => {
+    if (!trayReady) {
+      pendingOpenCropper = true;
+      return;
+    }
+
+    const {windowManager} = require('./windows/manager');
+    windowManager.cropper?.open();
+  });
+
+  tray.on('right-click', () => {
+    if (!trayReady) {
+      tray.popUpContextMenu(Menu.buildFromTemplate([
+        {label: 'Kap is loading…', enabled: false}
+      ]));
+    }
+  });
+
+  const tick = async () => new Promise<void>(resolve => {
+    setTimeout(resolve, 0);
+  });
+
+  // Auto-detect production build — if static output exists, skip the
+  // Next.js dev server entirely.  This eliminates the ~16s prepareNext
+  // delay, the ~15s pre-compilation wait, and the fsevents crash on
+  // Ctrl+C (no file-watcher thread).
+  const staticDir = path.join(__dirname, '..', 'renderer', 'out');
+  const hasStaticBuild = fs.existsSync(path.join(staticDir, 'cropper.html'));
+  if (hasStaticBuild) {
+    process.env.ELECTRON_IS_DEV = '0';
+  }
+
   setImmediate(async () => {
-    // Error handling (lightweight)
     require('./utils/errors').setupErrorHandling();
     await tick();
 
-    // Protocol setup (needed before windows load)
     require('./utils/protocol').setupProtocol();
 
-    // Prepare Next.js renderer (instant in production — just sets file protocol)
+    // In production electron-next installs the file-protocol interceptor that
+    // maps /_next assets into renderer/out. It must run for static builds too.
     const prepareNext = require('electron-next');
     await prepareNext('./renderer');
+
+    if (!hasStaticBuild) {
+      // Pre-compile the cropper page by loading it in a hidden window.
+      // Only needed in dev mode (static builds serve instantly).
+      const {is: isDev} = require('electron-util');
+      if (isDev.development) {
+        const preloadWin = new BrowserWindow({
+          show: false,
+          webPreferences: {nodeIntegration: true, enableRemoteModule: true, contextIsolation: false} as any
+        });
+        await preloadWin.loadURL('http://localhost:8000/cropper');
+        preloadWin.destroy();
+      }
+    }
+
     await tick();
 
-    // Remote states (lightweight IPC setup)
     require('./remote-states').setupRemoteStates();
 
-    // Load all window modules — registers cropper, editor, etc. with windowManager
-    require('./windows/load');
+    // Phase 2: Only load cropper first — defer all other window modules
+    mark('before cropper require');
+    require('./windows/cropper');
+    mark('cropper module loaded');
     await tick();
 
     // Now replace the temporary tray with the full-featured one
@@ -153,17 +211,37 @@ app.on('window-all-closed', () => {
     const {initializeTray: wireUpTray} = require('./tray');
     wireUpTray(tray);
     trayReady = true;
+    mark('tray ready');
 
-    // Process any deep links received during startup (e.g. kap://toggle)
+    if (pendingOpenCropper) {
+      pendingOpenCropper = false;
+      const {windowManager} = require('./windows/manager');
+      windowManager.cropper?.open();
+    }
+
     markDeepLinkReady();
 
-    // ── Phase 3: Deferred non-critical init (each step yields) ──────────
     await tick();
 
-    // Logging & telemetry (deferred — heavy modules, not needed for tray/recording)
-    try { require('electron-timber').hookConsole({main: true, renderer: true}); } catch {}
-    await tick();
-    try { require('./utils/sentry'); } catch {}
+    // Phase 3: Defer non-critical window modules and init
+    setImmediate(() => {
+      mark('deferred load starting');
+      require('./windows/editor');
+      require('./windows/config');
+      require('./windows/dialog');
+      require('./windows/exports');
+      require('./windows/preferences');
+      mark('deferred windows loaded');
+    });
+
+    // Electron-timber's renderer preload uses Electron's removed built-in
+    // remote API and fails before application code on current Electron.
+    try {
+      require('./utils/sentry');
+    } catch (error) {
+      console.error('[main] failed to initialize Sentry', error);
+    }
+
     await tick();
 
     const {initializeDevices} = require('./utils/devices');
@@ -182,46 +260,22 @@ app.on('window-all-closed', () => {
 
     await tick();
 
-    // Open cropper window
-    const {windowManager} = require('./windows/manager');
-    const {settings} = require('./common/settings');
-    const {ensureScreenCapturePermissions, hasMicrophoneAccess} = require('./common/system-permissions');
-
     if (filesToOpen.length > 0) {
       require('./common/analytics').track('editor/opened/startup');
       require('./utils/open-files').openFiles(...filesToOpen);
       require('./recording-history').hasActiveRecording().catch(console.error);
-    } else if (hadDeepLinkOnStartup) {
-      // Skip cropper — deep link (e.g. kap://record) is handling startup
-    } else {
-      try {
-        const {hasActiveRecording} = require('./recording-history');
-        if (
-          !(await hasActiveRecording()) &&
-          !app.getLoginItemSettings().wasOpenedAtLogin &&
-          ensureScreenCapturePermissions() &&
-          (!settings.get('recordAudio') || hasMicrophoneAccess())
-        ) {
-          windowManager.cropper?.open();
-        }
-      } catch (error) {
-        console.error('Error during startup permission check:', error);
-        windowManager.cropper?.open();
-      }
     }
 
-    // Plugin upgrade — fire and forget
     const {is} = require('electron-util');
-    if (!is.development) {
+    if (app.isPackaged && !is.development) {
       const {plugins} = require('./plugins');
       plugins.upgrade().catch((error: any) => {
         console.log('Plugin upgrade failed (non-fatal):', error);
       });
     }
 
-    // Defer update check
     setTimeout(() => {
-      if (is.development) {
+      if (!app.isPackaged || is.development) {
         return;
       }
 
@@ -245,8 +299,6 @@ app.on('window-all-closed', () => {
     }, 10_000);
   });
 })();
-
-// ── Quit handling ───────────────────────────────────────────────────────────
 
 const QUIT_TIMEOUT_MS = 5000;
 
@@ -284,11 +336,14 @@ app.on('before-quit', (event: any) => {
   }
 });
 
-// Handle terminal signals gracefully
-for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-  process.on(signal, () => {
+const handleSignal = (signal: 'SIGTERM' | 'SIGINT') => {
+  return () => {
     console.log(`Received ${signal}, quitting...`);
     onExitCleanupComplete = true;
     app.exit(0);
-  });
+  };
+};
+
+for (const signal of ['SIGTERM', 'SIGINT'] as const) {
+  process.on(signal, handleSignal(signal));
 }

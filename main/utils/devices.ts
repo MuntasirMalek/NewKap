@@ -5,17 +5,19 @@ import {defaultInputDeviceId} from '../common/constants';
 import Sentry from './sentry';
 const aperture = require('aperture');
 
-// Cache audio devices to avoid repeated slow native calls
 let cachedDevices: Array<{id: string; name: string}> | undefined;
 let cacheTimestamp = 0;
 const CACHE_TTL_MS = 10000;
+
+let cachedDefaultDeviceId: string | undefined;
+let defaultDeviceCacheTimestamp = 0;
+const DEFAULT_DEVICE_CACHE_TTL = 30000;
 
 export const getAudioDevices = async () => {
   if (!hasMicrophoneAccess()) {
     return [];
   }
 
-  // Return cached devices if fresh
   if (cachedDevices && (Date.now() - cacheTimestamp) < CACHE_TTL_MS) {
     return cachedDevices;
   }
@@ -70,6 +72,32 @@ export const getDefaultInputDevice = () => {
   } catch {
     return undefined;
   }
+};
+
+// Returns the cached default device ID without doing a sync native call
+export const getCachedAudioDeviceId = () => {
+  if (!hasMicrophoneAccess()) {
+    return undefined;
+  }
+
+  const audioInputDeviceId = settings.get('audioInputDeviceId', defaultInputDeviceId);
+
+  if (audioInputDeviceId === defaultInputDeviceId) {
+    if (cachedDefaultDeviceId && (Date.now() - defaultDeviceCacheTimestamp) < DEFAULT_DEVICE_CACHE_TTL) {
+      return cachedDefaultDeviceId;
+    }
+
+    try {
+      const device = audioDevices.getDefaultInputDevice.sync();
+      cachedDefaultDeviceId = device.uid;
+      defaultDeviceCacheTimestamp = Date.now();
+      return cachedDefaultDeviceId;
+    } catch {
+      return undefined;
+    }
+  }
+
+  return audioInputDeviceId;
 };
 
 export const getSelectedInputDeviceId = () => {

@@ -1,4 +1,4 @@
-import {remote} from 'electron';
+const remote = require('../../utils/electron-remote');
 import {useEffect, useRef} from 'react';
 import {resizeKeepingCenter} from 'utils/window';
 

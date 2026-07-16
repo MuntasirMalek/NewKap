@@ -52,6 +52,7 @@ class PreferencesNavigation extends React.Component {
             padding: 0 16px;
             display: flex;
             align-items: center;
+            -webkit-app-region: no-drag;
           }
 
           .nav-item {
@@ -68,6 +69,7 @@ class PreferencesNavigation extends React.Component {
             border: 1px solid transparent;
             outline: none;
             padding-right: 8px;
+            cursor: pointer;
           }
 
           .nav-item.active {
@@ -104,7 +106,7 @@ class PreferencesNavigation extends React.Component {
 
 PreferencesNavigation.propTypes = {
   category: PropTypes.string,
-  selectCategory: PropTypes.elementType.isRequired
+  selectCategory: PropTypes.func.isRequired
 };
 
 export default connect(

@@ -15,13 +15,13 @@ import TypedEventEmitter from 'typed-emitter';
 import {plugins} from './plugins';
 import {askForTargetFilePath} from './plugins/built-in/save-file-plugin';
 import path from 'path';
-import {ensureDockIsShowingSync} from './utils/dock';
 import {windowManager} from './windows/manager';
 
 export interface ExportOptions {
   plugin: InstalledPlugin;
   service: ShareService;
   extras: Record<string, unknown>;
+  title?: string;
 }
 
 export default class Export extends (EventEmitter as new () => TypedEventEmitter<ExportEvents>) {
@@ -72,8 +72,7 @@ export default class Export extends (EventEmitter as new () => TypedEventEmitter
     public readonly video: Video,
     private readonly format: Format,
     private readonly conversionOptions: ConversionOptions,
-    private readonly options: ExportOptions,
-    private readonly title: string = video.title
+    private readonly options: ExportOptions
   ) {
     // eslint-disable-next-line constructor-super
     super();
@@ -86,7 +85,7 @@ export default class Export extends (EventEmitter as new () => TypedEventEmitter
       plugin: options.plugin,
       format,
       prettyFormat: prettifyFormat(format),
-      defaultFileName: video.title,
+      defaultFileName: this.title,
       filePath: this.filePath,
       onProgress: this.onProgress,
       onCancel: this.cancel
@@ -98,6 +97,10 @@ export default class Export extends (EventEmitter as new () => TypedEventEmitter
     }
 
     setExportMenuItemState(true);
+  }
+
+  private get title() {
+    return this.options.title ?? this.video.title;
   }
 
   static addExport = (newExport: Export) => {
@@ -296,9 +299,9 @@ export const setUpExportsListeners = () => {
       {
         plugin: exportPlugin,
         service: exportService,
-        extras
-      },
-      extras.targetFilePath && path.parse(extras.targetFilePath).name
+        extras,
+        title: extras.targetFilePath && path.parse(extras.targetFilePath).name
+      }
     );
 
     newExport.start();
@@ -310,23 +313,21 @@ export const setUpExportsListeners = () => {
     if (Export.all.some(exp => exp.status === ExportStatus.inProgress)) {
       windowManager.exports?.open();
 
-      ensureDockIsShowingSync(() => {
-        const buttonIndex = dialog.showMessageBoxSync({
-          type: 'question',
-          buttons: [
-            'Continue',
-            'Quit'
-          ],
-          defaultId: 0,
-          cancelId: 1,
-          message: 'Do you want to continue exporting?',
-          detail: 'Kap is currently exporting files. If you quit, the export task will be canceled.'
-        });
-
-        if (buttonIndex === 0) {
-          event.preventDefault();
-        }
+      const buttonIndex = dialog.showMessageBoxSync({
+        type: 'question',
+        buttons: [
+          'Continue',
+          'Quit'
+        ],
+        defaultId: 0,
+        cancelId: 1,
+        message: 'Do you want to continue exporting?',
+        detail: 'Kap is currently exporting files. If you quit, the export task will be canceled.'
       });
+
+      if (buttonIndex === 0) {
+        event.preventDefault();
+      }
     }
   });
 };

@@ -14,6 +14,10 @@ export default class CursorContainer extends Container {
 
   addCursorObserver = observer => {
     const {observers} = this.state;
+    if (observers.includes(observer)) {
+      return;
+    }
+
     this.setState({observers: [observer, ...observers]});
   };
 

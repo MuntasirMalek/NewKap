@@ -8,7 +8,6 @@ const RightControls = () => {
   const {isMuted, mute, unmute} = VideoControlsContainer.useContainer();
   const {hasAudio, duration} = VideoMetadataContainer.useContainer();
 
-  // FIXME
   const format = 'mp4';
 
   const canUnmute = !['gif', 'apng'].includes(format) && hasAudio;

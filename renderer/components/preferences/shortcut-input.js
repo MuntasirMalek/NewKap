@@ -1,4 +1,4 @@
-import React, {useRef, useEffect, useState} from 'react';
+import React, {useRef, useEffect, useState, useCallback} from 'react';
 import PropTypes from 'prop-types';
 import classNames from 'classnames';
 import {shake} from '../../utils/inputs';
@@ -60,13 +60,13 @@ const ShortcutInput = ({shortcut = '', onChange, tabIndex}) => {
   const boxRef = useRef();
   const inputRef = useRef();
 
-  const resetKeys = () => {
+  const resetKeys = useCallback(() => {
     setKeys(shortcut.split('+').filter(Boolean));
-  };
+  }, [shortcut]);
 
   useEffect(() => {
     resetKeys();
-  }, [shortcut]);
+  }, [resetKeys]);
 
   const keysToRender = keys.map(key => metaCharacters.get(key) || key);
 
@@ -95,7 +95,7 @@ const ShortcutInput = ({shortcut = '', onChange, tabIndex}) => {
   };
 
   const handleKeyDown = event => {
-    // TODO: Use `code` instead of `keyCode` when this is released https://github.com/facebook/react/pull/18287
+    // Use keyCode until this React KeyboardEvent exposes `code` reliably.
     const {metaKey, altKey, ctrlKey, shiftKey, key, location, keyCode} = event;
     const metaKeys = [
       metaKey && 'Command',
@@ -154,7 +154,7 @@ const ShortcutInput = ({shortcut = '', onChange, tabIndex}) => {
   };
 
   const openMenu = () => {
-    const {Menu} = require('electron').remote;
+    const {Menu} = require('../../utils/electron-remote');
     const menu = Menu.buildFromTemplate(presets.map(accelerator => ({
       label: accelerator.split('+').map(key => metaCharacters.get(key) || key).join(''),
       click: () => {

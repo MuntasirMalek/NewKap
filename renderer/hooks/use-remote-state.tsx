@@ -1,8 +1,9 @@
 import {useState, useEffect, useRef} from 'react';
 import {ipcRenderer} from 'electron-better-ipc';
 import {RemoteState, RemoteStateHook} from '../common/types';
+import answerMain from '../utils/answer-main';
 
-// TODO: Import these util exports from the `main/remote-states/utils` file once we figure out the correct TS configuration
+// Keep these names aligned with `main/remote-states/utils` while the renderer and main TS configs stay separate.
 export const getChannelName = (name: string, action: string) => `kap-remote-state-${name}-${action}`;
 
 export const getChannelNames = (name: string) => ({
@@ -24,7 +25,7 @@ const createRemoteStateHook = <Callback extends RemoteState>(
     const actionsRef = useRef<any>({});
 
     useEffect(() => {
-      const cleanup = ipcRenderer.answerMain(channelNames.stateUpdated, (data: {id?: string; state: any}) => {
+      const cleanup = answerMain(channelNames.stateUpdated, (data: {id?: string; state: any}) => {
         if (data.id === id) {
           setState(data.state);
         }

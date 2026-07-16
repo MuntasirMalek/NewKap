@@ -3,36 +3,46 @@ import {ipcMain as ipc} from 'electron-better-ipc';
 import {settings} from './common/settings';
 import {windowManager} from './windows/manager';
 
-const openCropper = () => {
-  if (!windowManager.cropper?.isOpen()) {
-    windowManager.cropper?.open();
+const startOrOpenRecording = () => {
+  if (windowManager.cropper?.isOpen()) {
+    windowManager.cropper.startRecording();
+    return;
+  }
+
+  windowManager.cropper?.open();
+};
+
+const stopCurrentRecording = () => {
+  const {stopRecording} = require('./aperture');
+  stopRecording();
+};
+
+const handlers = new Map<string, () => void>([
+  ['triggerCropper', startOrOpenRecording],
+  ['stopRecording', stopCurrentRecording]
+]);
+
+const registerShortcut = (shortcut: string, action: () => void) => {
+  try {
+    const registered = globalShortcut.register(shortcut, action);
+    if (!registered) {
+      console.warn('Shortcut was not registered', shortcut);
+    }
+  } catch (error) {
+    console.error('Error registering shortcut', shortcut, action, error);
   }
 };
 
-// All settings that should be loaded and handled as global accelerators
-const handlers = new Map<string, () => void>([
-  ['triggerCropper', openCropper]
-]);
-
-// If no action is passed, it resets
-export const setCropperShortcutAction = (action = openCropper) => {
+export const setCropperShortcutAction = (action = startOrOpenRecording) => {
   if (settings.get('enableShortcuts') && settings.get('shortcuts.triggerCropper')) {
-    handlers.set('cropperShortcut', action);
+    handlers.set('triggerCropper', action);
 
     const shortcut = settings.get<string, string>('shortcuts.triggerCropper');
     if (globalShortcut.isRegistered(shortcut)) {
       globalShortcut.unregister(shortcut);
     }
 
-    globalShortcut.register(shortcut, action);
-  }
-};
-
-const registerShortcut = (shortcut: string, action: () => void) => {
-  try {
-    globalShortcut.register(shortcut, action);
-  } catch (error) {
-    console.error('Error registering shortcut', shortcut, action, error);
+    registerShortcut(shortcut, action);
   }
 };
 
@@ -68,8 +78,7 @@ export const initializeGlobalAccelerators = () => {
           registerShortcut(shortcut, handler);
         }
       } else if (!shortcut) {
-        // @ts-expect-error
-        settings.delete(`shortcuts.${setting}`);
+        (settings as any).delete(`shortcuts.${setting}`);
       }
     }
   });
@@ -82,6 +91,5 @@ export const initializeGlobalAccelerators = () => {
     }
   });
 
-  // Register keyboard shortcuts from store
   registerFromStore();
 };

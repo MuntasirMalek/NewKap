@@ -16,8 +16,8 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
           # Download and hash the x64 DMG
-          X64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${{ github.event.release.tag_name }}/NewKap-${VERSION}-x64.dmg"
-          ARM64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${{ github.event.release.tag_name }}/NewKap-${VERSION}-arm64.dmg"
+          X64_URL="https://github.com/jacobpowaza/NewKap/releases/download/${{ github.event.release.tag_name }}/Kap-${VERSION}-mac-x64.dmg"
+          ARM64_URL="https://github.com/jacobpowaza/NewKap/releases/download/${{ github.event.release.tag_name }}/Kap-${VERSION}-mac-arm64.dmg"
 
           X64_SHA=$(curl -sL "$X64_URL" | shasum -a 256 | cut -d' ' -f1)
           ARM64_SHA=$(curl -sL "$ARM64_URL" | shasum -a 256 | cut -d' ' -f1)
@@ -55,15 +55,15 @@ jobs:
               url "${ARM64_URL}"
             end
 
-            name "NewKap"
+            name "Kap"
             desc "Community-driven screen recorder (Kap fork)"
-            homepage "https://github.com/MuntasirMalek/NewKap"
+            homepage "https://github.com/jacobpowaza/NewKap"
 
-            app "NewKap.app"
+            app "Kap.app"
 
             postflight do
-              system_command "/usr/bin/xattr", args: ["-cr", "#{appdir}/NewKap.app"]
-              system_command "/usr/bin/tccutil", args: ["reset", "ScreenCapture", "com.newkap.app"]
+              system_command "/usr/bin/xattr", args: ["-cr", "#{appdir}/Kap.app"]
+              system_command "/usr/bin/tccutil", args: ["reset", "ScreenCapture", "com.wulkano.kap"]
             end
 
             zap trash: [
@@ -81,5 +81,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/newkap.rb
-          git commit -m "Update NewKap to ${{ github.event.release.tag_name }}"
+          git commit -m "Update Kap to ${{ github.event.release.tag_name }}"
           git push

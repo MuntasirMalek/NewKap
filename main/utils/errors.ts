@@ -204,10 +204,12 @@ export const showError = async (
 
 export const setupErrorHandling = () => {
   process.on('uncaughtException', error => {
+    console.error('[main] uncaughtException', error);
     showError(error, {title: 'Unhandled Error'});
   });
 
   process.on('unhandledRejection', error => {
+    console.error('[main] unhandledRejection', error);
     showError(ensureError(error), {title: 'Unhandled Promise Rejection'});
   });
 };

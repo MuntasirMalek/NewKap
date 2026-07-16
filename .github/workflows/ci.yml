@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: yarn
+      # A legacy lint resolver has a stale Node engine range but works on Node 22.
+      - run: yarn install --frozen-lockfile --ignore-engines
+      - run: yarn typecheck
+      - run: yarn lint
+      - run: yarn test:main
+      - run: yarn build-renderer

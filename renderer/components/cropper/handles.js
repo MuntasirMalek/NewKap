@@ -35,7 +35,7 @@ class Handle extends React.Component {
     });
 
     return (
-      <div className={className} onMouseDown={() => onClick(this.props)}>
+      <div className={className} onMouseDown={event => onClick(this.props, event)}>
         <style jsx>{`
           .handle {
             position: absolute;

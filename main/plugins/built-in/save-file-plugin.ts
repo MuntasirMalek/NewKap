@@ -6,8 +6,9 @@ import {settings} from '../../common/settings';
 import makeDir from 'make-dir';
 import {Format} from '../../common/types';
 import path from 'path';
+import {notify} from '../../utils/notifications';
 
-const {Notification, shell} = require('electron');
+const {shell} = require('electron');
 const cpFile = require('cp-file');
 
 const action = async (context: ShareServiceContext & {targetFilePath: string}) => {
@@ -22,16 +23,13 @@ const action = async (context: ShareServiceContext & {targetFilePath: string}) =
   // The temporary file will be cleaned up on app exit, or automatic system cleanup
   await cpFile(temporaryFilePath, context.targetFilePath);
 
-  const notification = new Notification({
+  notify({
     title: 'File saved successfully!',
-    body: 'Click to show the file in Finder'
+    body: 'Click to show the file in Finder',
+    click: () => {
+      shell.showItemInFolder(context.targetFilePath);
+    }
   });
-
-  notification.on('click', () => {
-    shell.showItemInFolder(context.targetFilePath);
-  });
-
-  notification.show();
 };
 
 const saveFile = {

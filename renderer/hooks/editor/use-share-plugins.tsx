@@ -1,5 +1,5 @@
 import OptionsContainer from 'components/editor/options-container';
-import {remote} from 'electron';
+const remote = require('../../utils/electron-remote');
 import {ipcRenderer} from 'electron-better-ipc';
 import {useMemo} from 'react';
 

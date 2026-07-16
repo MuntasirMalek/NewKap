@@ -1,15 +1,15 @@
 import {windowManager} from './windows/manager';
-import {setRecordingTray, setPausedTray, disableTray, resetTray} from './tray';
+import {setRecordingTray, setPausedTray, setStartingTray, resetTray} from './tray';
 import {setCropperShortcutAction} from './global-accelerators';
 import {settings} from './common/settings';
 import {track} from './common/analytics';
 import {plugins} from './plugins';
-import {getAudioDevices, getSelectedInputDeviceId} from './utils/devices';
+import {getAudioDevices, getCachedAudioDeviceId} from './utils/devices';
 import {showError} from './utils/errors';
 import {RecordServiceContext, RecordServiceState} from './plugins/service-context';
 import {setCurrentRecording, updatePluginState, stopCurrentRecording} from './recording-history';
 import {Recording} from './video';
-import {ApertureOptions, StartRecordingOptions} from './common/types';
+import {ApertureOptions, Encoding, StartRecordingOptions} from './common/types';
 import {InstalledPlugin} from './plugins/plugin';
 import {RecordService, RecordServiceHook} from './plugins/service';
 import {getCurrentDurationStart, getOverallDuration, setCurrentDurationStart, setOverallDuration} from './utils/track-duration';
@@ -17,6 +17,11 @@ import {getCurrentDurationStart, getOverallDuration, setCurrentDurationStart, se
 const createAperture = require('aperture');
 let aperture = createAperture();
 const MAX_RECORDING_RETRIES = 2;
+const recordingCodecs = {
+  standard: Encoding.h264,
+  high: Encoding.hevc,
+  maximum: Encoding.proRes422
+};
 
 let recordingPlugins: Array<{plugin: InstalledPlugin; service: RecordService}> = [];
 const serviceState = new Map<string, RecordServiceState>();
@@ -56,7 +61,7 @@ const callPlugins = async (method: RecordServiceHook) => Promise.all(recordingPl
         })
       );
     } catch (error) {
-      showError(error as any, {title: `Something went wrong while using the plugin “${plugin.prettyName}”`, plugin});
+      showError(error as any, {title: `Something went wrong while using the plugin \u201C${plugin.prettyName}\u201D`, plugin});
     }
   }
 }));
@@ -81,7 +86,9 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   windowManager.preferences?.close();
   windowManager.cropper?.disable();
-  disableTray();
+
+  // Use starting tray state instead of disabling tray completely
+  setStartingTray();
 
   const {cropperBounds, screenBounds, displayId} = options;
 
@@ -91,21 +98,25 @@ export const startRecording = async (options: StartRecordingOptions) => {
     record60fps,
     showCursor,
     highlightClicks,
-    recordAudio
+    recordAudio,
+    recordingQuality
   } = settings.store;
+
+  const requestedCodec = recordingCodecs[recordingQuality];
+  const videoCodec = createAperture.videoCodecs.has(requestedCodec) ? requestedCodec : Encoding.h264;
 
   apertureOptions = {
     fps: record60fps ? 60 : 30,
     cropArea: cropperBounds,
     showCursor,
     highlightClicks,
-    screenId: displayId
+    screenId: displayId,
+    videoCodec
   };
 
   if (recordAudio) {
-    // In case for some reason the default audio device is not set
-    // use the first available device for recording
-    const audioInputDeviceId = getSelectedInputDeviceId();
+    // Use cached audio device ID to avoid synchronous blocking
+    const audioInputDeviceId = getCachedAudioDeviceId();
     if (audioInputDeviceId) {
       apertureOptions.audioDeviceId = audioInputDeviceId;
     } else {
@@ -114,20 +125,14 @@ export const startRecording = async (options: StartRecordingOptions) => {
     }
   }
 
-  // TODO: figure out how to correctly process hevc videos with ffmpeg
-  // if (recordHevc) {
-  //   apertureOptions.videoCodec = 'hevc';
-  // }
-
   console.log(`Collected settings after ${(Date.now() - past) / 1000}s`);
 
   recordingPlugins = plugins
     .recordingPlugins
     .flatMap(
       plugin => {
-        const validServices = plugin.config.validServices;
+        const {validServices} = plugin.config;
         return plugin.recordServicesWithStatus
-          // Make sure service is valid and enabled
           .filter(({title, isEnabled}) => isEnabled && validServices.includes(title))
           .map(service => ({plugin, service}));
       }
@@ -140,7 +145,6 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   await callPlugins('willStartRecording');
 
-  // Retry logic for aperture timeout on macOS Sonoma+
   let lastError: any;
   for (let attempt = 1; attempt <= MAX_RECORDING_RETRIES; attempt++) {
     try {
@@ -160,7 +164,6 @@ export const startRecording = async (options: StartRecordingOptions) => {
       lastError = error;
       if (error?.code === 'RECORDER_TIMEOUT' && attempt < MAX_RECORDING_RETRIES) {
         console.log(`Recording attempt ${attempt} timed out, retrying...`);
-        // Reset aperture instance for retry
         aperture = createAperture();
         continue;
       }
@@ -169,7 +172,7 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   if (lastError) {
     track('recording/stopped/error');
-    showError(lastError as any, {title: 'Recording error', plugin: undefined});
+    showError(lastError, {title: 'Recording error', plugin: undefined});
     past = undefined;
     cleanup();
     return;
@@ -188,9 +191,7 @@ export const startRecording = async (options: StartRecordingOptions) => {
   setCropperShortcutAction(stopRecording);
   past = Date.now();
 
-  // Track aperture errors after recording has started, to avoid kap freezing if something goes wrong
   aperture.recorder.catch((error: any) => {
-    // Make sure it doesn't catch the error of ending the recording
     if (past) {
       track('recording/stopped/error');
       showError(error, {title: 'Recording error', plugin: undefined});
@@ -204,7 +205,6 @@ export const startRecording = async (options: StartRecordingOptions) => {
 };
 
 export const stopRecording = async () => {
-  // Ensure we only stop recording once
   if (!past) {
     return;
   }
@@ -242,7 +242,6 @@ export const stopRecording = async () => {
 };
 
 export const stopRecordingWithNoEdit = async () => {
-  // Ensure we only stop recording once
   if (!past) {
     return;
   }
@@ -251,10 +250,14 @@ export const stopRecordingWithNoEdit = async () => {
   past = undefined;
 
   try {
-    // Add timeout to prevent hanging on quit
     await Promise.race([
       aperture.stopRecording(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Stop recording timed out')), 5000))
+      new Promise((resolve, reject) => {
+        void resolve;
+        setTimeout(() => {
+          reject(new Error('Stop recording timed out'));
+        }, 5000);
+      })
     ]);
     setOverallDuration(0);
     setCurrentDurationStart(0);

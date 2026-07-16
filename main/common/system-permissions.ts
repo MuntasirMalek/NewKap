@@ -1,5 +1,4 @@
 import {systemPreferences, shell, dialog, app} from 'electron';
-const {ensureDockIsShowing} = require('../utils/dock');
 
 // Safe wrapper for mac-screen-capture-permissions (unreliable on macOS Sonoma+)
 let hasScreenCapturePermission: () => boolean;
@@ -38,7 +37,7 @@ let isDialogShowing = false;
 // Use the correct URL scheme for macOS Sonoma+ (System Settings vs System Preferences)
 const getSystemSettingsUrl = (privacySection: string) => {
   const majorVersion = Number.parseInt(require('os').release().split('.')[0], 10);
-  // macOS Sonoma (14.x) = Darwin 23.x, uses new System Settings URL scheme
+  // MacOS Sonoma (14.x) = Darwin 23.x, uses new System Settings URL scheme
   if (majorVersion >= 23) {
     const sectionMap: Record<string, string> = {
       Privacy_Microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
@@ -56,7 +55,8 @@ const promptSystemPreferences = (options: {message: string; detail: string; syst
   }
 
   isDialogShowing = true;
-  await ensureDockIsShowing(async () => {
+  app.focus({steal: true});
+  try {
     const {response} = await dialog.showMessageBox({
       type: 'warning',
       buttons: ['Open System Settings', 'Cancel'],
@@ -65,13 +65,13 @@ const promptSystemPreferences = (options: {message: string; detail: string; syst
       detail: options.detail,
       cancelId: 1
     });
-    isDialogShowing = false;
-
     if (response === 0) {
       await openSystemPreferences(options.systemPreferencesPath);
       app.quit();
     }
-  });
+  } finally {
+    isDialogShowing = false;
+  }
 
   return false;
 };
@@ -83,8 +83,8 @@ export const openSystemPreferences = async (path: string) => shell.openExternal(
 const getMicrophoneAccess = () => systemPreferences.getMediaAccessStatus('microphone');
 
 const microphoneFallback = promptSystemPreferences({
-  message: 'NewKap cannot access the microphone.',
-  detail: 'NewKap requires microphone access to be able to record audio. You can grant this in System Settings → Privacy & Security → Microphone. Afterwards, relaunch NewKap.',
+  message: 'Kap cannot access the microphone.',
+  detail: 'Kap requires microphone access to record audio. You can grant this in System Settings → Privacy & Security → Microphone. Afterwards, relaunch Kap.',
   systemPreferencesPath: 'Privacy_Microphone'
 });
 
@@ -113,8 +113,8 @@ export const hasMicrophoneAccess = () => getMicrophoneAccess() === 'granted';
 // Screen Capture (10.15 and newer)
 
 const screenCaptureFallback = promptSystemPreferences({
-  message: 'NewKap cannot record the screen.',
-  detail: 'NewKap requires screen capture access to be able to record the screen. You can grant this in System Settings → Privacy & Security → Screen Recording. Afterwards, relaunch NewKap.',
+  message: 'Kap cannot record the screen.',
+  detail: 'Kap requires screen capture access to record the screen. You can grant this in System Settings → Privacy & Security → Screen Recording. Afterwards, relaunch Kap.',
   systemPreferencesPath: 'Privacy_ScreenCapture'
 });
 
@@ -144,4 +144,3 @@ export const hasScreenCaptureAccess = () => {
     return false;
   }
 };
-

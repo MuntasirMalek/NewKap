@@ -63,7 +63,7 @@ const Video = () => {
       await videoControlsContainer.pause();
     }
 
-    const {Menu} = require('electron-util').api;
+    const {Menu} = require('../../utils/electron-remote');
     const menu = Menu.buildFromTemplate([{
       label: 'Snapshot',
       click: () => {
@@ -81,13 +81,27 @@ const Video = () => {
   };
 
   return (
-    <div onContextMenu={onContextMenu}>
+    <div className="video-frame" onContextMenu={onContextMenu}>
       <video ref={videoRef} preload="auto" src={src} {...videoProps}/>
       <style jsx>{`
+        .video-frame {
+          flex: 1;
+          min-width: 0;
+          min-height: 0;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
+          background: #000;
+        }
+
         video {
           width: 100%;
           height: 100%;
           max-height: calc(100vh - 48px);
+          object-fit: contain;
+          object-position: center center;
+          display: block;
         }
       `}</style>
     </div>

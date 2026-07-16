@@ -1,4 +1,3 @@
-import electron from 'electron';
 import PropTypes from 'prop-types';
 import React from 'react';
 import css from 'styled-jsx/css';
@@ -24,7 +23,7 @@ const mainStyle = css`
 
 const MainControls = {};
 
-const remote = electron.remote || false;
+const remote = require('../../../utils/electron-remote');
 let menu;
 
 const buildMenu = async ({selectedApp}) => {
@@ -86,7 +85,7 @@ MainControls.Left = connect(
 
 class Right extends React.Component {
   onCogMenuClick = async () => {
-    const cogMenu = await electron.remote.require('./menus/cog').getCogMenu();
+    const cogMenu = await require('../../../utils/electron-remote').require('./menus/cog').getCogMenuAsync();
     cogMenu.popup();
   };
 

@@ -11,6 +11,22 @@ const Kap = (props: AppProps) => {
 
   useEffect(() => {
     setIsMounted(true);
+
+    const handleError = (event: ErrorEvent) => {
+      console.error('[renderer] uncaught error', event.error ?? event.message);
+    };
+
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      console.error('[renderer] unhandled rejection', event.reason);
+    };
+
+    window.addEventListener('error', handleError);
+    window.addEventListener('unhandledrejection', handleRejection);
+
+    return () => {
+      window.removeEventListener('error', handleError);
+      window.removeEventListener('unhandledrejection', handleRejection);
+    };
   }, []);
 
   if (!isMounted) {

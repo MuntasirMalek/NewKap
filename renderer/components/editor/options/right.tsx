@@ -260,7 +260,7 @@ export default RightOptions;
 //           type: 'radio',
 //           checked: openWithApp && app.url === openWithApp.url,
 //           click: () => selectOpenWithApp(app),
-//           icon: electron.remote.nativeImage.createFromDataURL(app.icon).resize({width: 16, height: 16})
+//           icon: remote.nativeImage.createFromDataURL(app.icon).resize({width: 16, height: 16})
 //         }));
 
 //         if (plugin.apps[0].isDefault) {

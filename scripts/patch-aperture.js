@@ -37,14 +37,17 @@ if (patched) {
 // There are multiple nested copies (mac-open-with, macos-audio-devices,
 // mac-screen-capture-permissions, electron-timber) that each bundle their own
 // electron-util with the enforce function still active.
-const noopEnforce = `'use strict';\n// Patched by NewKap: disabled — unreliable and shows wrong branding.\nmodule.exports = () => {};\n`;
+const noopEnforce = '\'use strict\';\n// Patched by NewKap: disabled — unreliable and shows wrong branding.\nmodule.exports = () => {};\n';
 const nodeModulesDir = path.join(__dirname, '..', 'node_modules');
 
 function patchAllEnforceCopies(dir) {
   let count = 0;
   const entries = fs.readdirSync(dir, {withFileTypes: true});
   for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
+    if (!entry.isDirectory()) {
+      continue;
+    }
+
     const full = path.join(dir, entry.name);
 
     if (entry.name === 'electron-util') {
@@ -62,17 +65,17 @@ function patchAllEnforceCopies(dir) {
         if (idx.includes('isInApplicationsFolder') || idx.includes('Move to Applications folder')) {
           // Replace enforce export with no-op (handles all format variations)
           idx = idx.replace(
-            /exports\.enforceMacOSAppLocation\s*=\s*\(\)\s*=>\s*\{/,
+            /exports\.enforceMacOSAppLocation\s*=\s*\(\)\s*=>\s*{/,
             'exports.enforceMacOSAppLocation = () => { return;'
           );
           // Neuter the legacy function
           idx = idx.replace(
-            /function legacyEnforceMacOSAppLocation\(\)\s*\{/,
+            /function legacyEnforceMacOSAppLocation\(\)\s*{/,
             'function legacyEnforceMacOSAppLocation() { return;'
           );
           // Make isInApplicationsFolder always return true
           idx = idx.replace(
-            /function isInApplicationsFolder\(\)\s*\{/,
+            /function isInApplicationsFolder\(\)\s*{/,
             'function isInApplicationsFolder() { return true;'
           );
           fs.writeFileSync(indexJs, idx);
@@ -87,6 +90,7 @@ function patchAllEnforceCopies(dir) {
       count += patchAllEnforceCopies(nested);
     }
   }
+
   return count;
 }
 

@@ -1,4 +1,5 @@
 import {BrowserWindow} from 'electron';
+import {enable as enableRemote} from '@electron/remote/main';
 import {promisify} from 'util';
 import pEvent from 'p-event';
 
@@ -41,17 +42,22 @@ const openPrefsWindow = async (options?: PreferencesWindowOptions) => {
       nodeIntegration: true,
       enableRemoteModule: true,
       contextIsolation: false
-    }
+    } as any
   });
 
   const titlebarHeight = 85;
   prefsWindow.setSheetOffset(titlebarHeight);
+
+  prefsWindow.webContents.on('render-process-gone', (_event, details) => {
+    console.error('[preferences] render process gone', details);
+  });
 
   prefsWindow.on('close', () => {
     prefsWindow = undefined;
   });
 
   loadRoute(prefsWindow, 'preferences');
+  enableRemote(prefsWindow.webContents);
 
   await pEvent(prefsWindow.webContents, 'did-finish-load');
 

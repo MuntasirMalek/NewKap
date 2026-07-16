@@ -25,12 +25,12 @@ const open = async (video: Video) => {
     return;
   }
 
-  // TODO: Make this smarter so the editor can show with a spinner while the preview is generated for longer preview conversions (like ProRes)
+  // Preview generation can be slow for formats like ProRes; wait here so the editor opens with playable media.
   await video.whenPreviewReady();
 
   const editorKapWindow = new KapWindow<EditorWindowState>({
     title: video.title,
-    // TODO: Return those to the original values when we are able to resize below min size
+    // Keep these relaxed until Electron allows resizing below the window minimum again.
     // Upstream issue: https://github.com/electron/electron/issues/27025
     // minWidth: MIN_VIDEO_WIDTH,
     // minHeight: MIN_WINDOW_HEIGHT,

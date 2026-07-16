@@ -1,8 +1,11 @@
 import {Menu} from 'electron';
 import {MenuItemId, MenuOptions} from './utils';
 import {pauseRecording, resumeRecording, stopRecording} from '../aperture';
+import {settings} from '../common/settings';
 import formatTime from '../utils/format-time';
 import {getCurrentDurationStart, getOverallDuration} from '../utils/track-duration';
+
+const menuAccelerator = (shortcut: string) => shortcut ? shortcut : undefined;
 
 const getDurationLabel = () => {
   if (getCurrentDurationStart() <= 0) {
@@ -21,6 +24,7 @@ const getDurationMenuItem = () => ({
 const getStopRecordingMenuItem = () => ({
   id: MenuItemId.stopRecording,
   label: 'Stop',
+  accelerator: menuAccelerator(settings.get('shortcuts.stopRecording')),
   click: stopRecording
 });
 

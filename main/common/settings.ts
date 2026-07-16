@@ -2,16 +2,20 @@
 
 import {homedir} from 'os';
 import Store from 'electron-store';
+import {Format} from './types';
 
 const {defaultInputDeviceId} = require('./constants');
 const shortcutToAccelerator = require('../utils/shortcut-to-accelerator');
 
 export const shortcuts = {
-  triggerCropper: 'Toggle Kap'
+  triggerCropper: 'Start Recording',
+  stopRecording: 'Stop Recording'
 };
 
+export type RecordingQuality = 'standard' | 'high' | 'maximum';
+
 const shortcutSchema = {
-  type: 'string',
+  type: 'string' as const,
   default: ''
 };
 
@@ -24,7 +28,13 @@ interface Settings {
   loopExports: boolean;
   recordKeyboardShortcut: boolean;
   recordAudio: boolean;
+  showCountdown: boolean;
+  countdownDuration: number;
   audioInputDeviceId?: string;
+  recordingQuality: RecordingQuality;
+  defaultExportFormat: Format;
+  showNotifications: boolean;
+  playNotificationSound: boolean;
   cropperShortcut: {
     metaKey: boolean;
     altKey: boolean;
@@ -74,12 +84,40 @@ export const settings = new Store<Settings>({
       type: 'boolean',
       default: false
     },
+    showCountdown: {
+      type: 'boolean',
+      default: true
+    },
+    countdownDuration: {
+      type: 'integer',
+      minimum: 1,
+      maximum: 10,
+      default: 3
+    },
     audioInputDeviceId: {
       type: [
         'string',
         'null'
       ],
       default: defaultInputDeviceId
+    },
+    recordingQuality: {
+      type: 'string',
+      enum: ['standard', 'high', 'maximum'],
+      default: 'standard'
+    },
+    defaultExportFormat: {
+      type: 'string',
+      enum: ['mp4', 'hevc', 'av1', 'gif', 'apng', 'webm'],
+      default: Format.mp4
+    },
+    showNotifications: {
+      type: 'boolean',
+      default: true
+    },
+    playNotificationSound: {
+      type: 'boolean',
+      default: true
     },
     cropperShortcut: {
       type: 'object',
@@ -116,8 +154,7 @@ export const settings = new Store<Settings>({
     },
     shortcuts: {
       type: 'object',
-      // eslint-disable-next-line unicorn/no-array-reduce
-      properties: Object.keys(shortcuts).reduce((acc, key) => ({...acc, [key]: shortcutSchema}), {}),
+      properties: Object.fromEntries(Object.keys(shortcuts).map(key => [key, shortcutSchema])),
       default: {}
     },
     version: {
@@ -127,13 +164,11 @@ export const settings = new Store<Settings>({
   }
 });
 
-// TODO: Remove this when we feel like everyone has migrated
 if (settings.has('recordKeyboardShortcut')) {
   settings.set('enableShortcuts', settings.get('recordKeyboardShortcut'));
   settings.delete('recordKeyboardShortcut');
 }
 
-// TODO: Remove this when we feel like everyone has migrated
 if (settings.has('cropperShortcut')) {
   settings.set('shortcuts.triggerCropper', shortcutToAccelerator(settings.get('cropperShortcut')));
   settings.delete('cropperShortcut');

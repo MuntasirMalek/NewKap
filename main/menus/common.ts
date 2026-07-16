@@ -10,7 +10,6 @@ import {windowManager} from '../windows/manager';
 export const getPreferencesMenuItem = () => ({
   id: MenuItemId.preferences,
   label: 'Preferences…',
-  accelerator: 'Command+,',
   click: () => windowManager.preferences?.open()
 });
 
@@ -91,4 +90,3 @@ Workaround:           A workaround for the issue if you've found on. (this will 
 
 <!-- If you have additional information, enter it below. -->
 `;
-

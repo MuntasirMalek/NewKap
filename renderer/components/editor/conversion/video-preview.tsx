@@ -93,22 +93,24 @@ const VideoPreview = ({conversion, cancel, showInFolder}: {conversion: UseConver
       <style jsx>{`
         .video-preview {
           width: 100%;
-          height: wrap-content;
           background: black;
           position: relative;
           flex: 1;
           height: 0;
           -webkit-app-region: no-drag;
           max-height: 200px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          overflow: hidden;
         }
 
         video, img {
           width: 100%;
           height: 100%;
-        }
-
-        img {
           object-fit: contain;
+          object-position: center center;
+          display: block;
         }
 
         .overlay {

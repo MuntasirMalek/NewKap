@@ -1,4 +1,10 @@
 node_modules
+.env
+.env.local
+coverage
+*.log
+.DS_Store
+.mri-last-report.json
 /renderer/out
 /renderer/.next
 /app/dist

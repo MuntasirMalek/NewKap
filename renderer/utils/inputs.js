@@ -1,5 +1,5 @@
-import electron from 'electron';
 import _ from 'lodash';
+import remote from './electron-remote';
 
 let screenWidth = 0;
 let screenHeight = 0;
@@ -9,7 +9,6 @@ export const setScreenSize = (width, height) => {
   screenHeight = height;
 };
 
-const {remote} = electron;
 const debounceTimeout = 500;
 export const minWidth = 20;
 export const minHeight = 20;

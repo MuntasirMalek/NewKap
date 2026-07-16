@@ -1,14 +1,11 @@
 import electron from 'electron';
 import {Container} from 'unstated';
 import {ipcRenderer as ipc} from 'electron-better-ipc';
-// Import {defaultInputDeviceId} from 'common/constants';
-
-const defaultInputDeviceId = 'asd';
 
 const SETTINGS_ANALYTICS_BLACKLIST = ['kapturesDir'];
 
 export default class PreferencesContainer extends Container {
-  remote = electron.remote || false;
+  remote = require('../utils/electron-remote');
 
   state = {
     category: 'general',
@@ -19,7 +16,9 @@ export default class PreferencesContainer extends Container {
   mount = async setOverlay => {
     this.setOverlay = setOverlay;
     const {settings, shortcuts} = this.remote.require('./common/settings');
+    const {defaultInputDeviceId} = this.remote.require('./common/constants');
     this.settings = settings;
+    this.defaultInputDeviceId = defaultInputDeviceId;
     this.settings.shortcuts = shortcuts;
     this.systemPermissions = this.remote.require('./common/system-permissions');
     this.plugins = this.remote.require('./plugins').plugins;
@@ -52,15 +51,15 @@ export default class PreferencesContainer extends Container {
     const audioDevices = await getAudioDevices();
     const updates = {
       audioDevices: [
-        {name: `System Default${currentDefaultName ? ` (${currentDefaultName})` : ''}`, id: defaultInputDeviceId},
+        {name: `System Default${currentDefaultName ? ` (${currentDefaultName})` : ''}`, id: this.defaultInputDeviceId},
         ...audioDevices
       ],
       audioInputDeviceId
     };
 
     if (!audioDevices.some(device => device.id === audioInputDeviceId)) {
-      updates.audioInputDeviceId = defaultInputDeviceId;
-      this.settings.set('audioInputDeviceId', defaultInputDeviceId);
+      updates.audioInputDeviceId = this.defaultInputDeviceId;
+      this.settings.set('audioInputDeviceId', this.defaultInputDeviceId);
     }
 
     this.setState(updates);
@@ -141,7 +140,8 @@ export default class PreferencesContainer extends Container {
         this.openTarget(this.state.target);
         this.setState({target: undefined});
       }
-    } catch {
+    } catch (error) {
+      console.error('[preferences] failed to load plugin catalog', error);
       this.setState({npmError: true});
     }
   };
