@@ -25,7 +25,7 @@
     "build": "yarn build-main && yarn build-renderer",
     "dist": "npm run build && electron-builder",
     "pack": "npm run build && electron-builder --dir",
-    "postinstall": "electron-builder install-app-deps && node scripts/patch-aperture.js",
+    "postinstall": "electron-builder install-app-deps && node scripts/patch-aperture.js && node scripts/download-gifski.js && node scripts/patch-mac-helpers.js",
     "sentry-version": "echo \"$npm_package_name@$npm_package_version\"",
     "dev": "next dev renderer"
   },
@@ -54,13 +54,12 @@
     "ensure-error": "^3.0.1",
     "execa": "5.0.0",
     "ffmpeg-static": "^4.4.1",
-    "gifsicle": "^5.2.0",
     "got": "^9.6.0",
     "insight": "^0.10.3",
     "is-online": "^8.4.0",
     "lodash": "^4.17.21",
     "mac-open-with": "^1.2.3",
-    "mac-screen-capture-permissions": "^1.1.0",
+    "mac-screen-capture-permissions": "^2.1.0",
     "mac-windows": "^1.0.0",
     "macos-audio-devices": "^1.4.0",
     "macos-version": "^5.2.1",
@@ -254,7 +253,11 @@
       "static",
       "dist-js/**/*",
       "!renderer",
-      "renderer/out"
+      "renderer/out",
+      "vendor/gifski/**"
+    ],
+    "asarUnpack": [
+      "vendor/gifski/**"
     ],
     "mac": {
       "electronUpdaterCompatibility": ">=2.16",

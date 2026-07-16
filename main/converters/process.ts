@@ -1,4 +1,3 @@
-import util from 'electron-util';
 import execa from 'execa';
 import moment from 'moment';
 import PCancelable from 'p-cancelable';
@@ -6,22 +5,19 @@ import tempy from 'tempy';
 import path from 'path';
 
 import {track} from '../common/analytics';
-import {conditionalArgs, extractProgressFromStderr} from './utils';
-import {settings} from '../common/settings';
+import {extractGifskiProgress, extractProgressFromStderr} from './utils';
 
 import ffmpegPath from '../utils/ffmpeg-path';
-
-const gifsicle = require('gifsicle');
-const gifsiclePath = util.fixPathForAsarUnpack(gifsicle);
+import gifskiPath from '../utils/gifski-path';
 
 enum Mode {
   convert,
-  compress
+  gifski
 }
 
 const modes = new Map([
   [Mode.convert, ffmpegPath],
-  [Mode.compress, gifsiclePath]
+  [Mode.gifski, gifskiPath]
 ]);
 
 export interface ProcessOptions {
@@ -73,12 +69,29 @@ const createProcess = (mode: Mode) => {
       runner.stderr?.on('data', data => {
         stderr += data;
 
-        const progressData = extractProgressFromStderr(data, conversionStartTime, durationMs);
+        // FFmpeg reports progress on stderr; gifski reports it on stdout (below).
+        if (mode !== Mode.gifski) {
+          const progressData = extractProgressFromStderr(data, conversionStartTime, durationMs);
 
-        if (progressData) {
-          onProgress?.(progressData.progress, progressData.estimate);
+          if (progressData) {
+            onProgress?.(progressData.progress, progressData.estimate);
+          }
         }
       });
+
+      // The gifski runner writes carriage-return-updated "Frame N / total"
+      // progress to stdout. Each chunk carries complete status lines, so parse
+      // the chunk rather than re-scanning an ever-growing buffer.
+      if (mode === Mode.gifski) {
+        runner.stdout?.setEncoding('utf8');
+        runner.stdout?.on('data', data => {
+          const progressData = extractGifskiProgress(data);
+
+          if (progressData) {
+            onProgress?.(progressData.progress, progressData.estimate);
+          }
+        });
+      }
 
       const failWithError = (reason: unknown) => {
         trackConversionEvent('failed');
@@ -102,18 +115,7 @@ const createProcess = (mode: Mode) => {
 };
 
 export const convert = createProcess(Mode.convert);
-const compressFunction = createProcess(Mode.compress);
-
-// eslint-disable-next-line @typescript-eslint/promise-function-async
-export const compress = (outputPath: string, options: ProcessOptions, args: string[]) => {
-  const useLossy = settings.get('lossyCompression', false);
-
-  return compressFunction(
-    outputPath,
-    options,
-    conditionalArgs(args, {args: ['--lossy=50'], if: useLossy})
-  );
-};
+export const gifski = createProcess(Mode.gifski);
 
 export const mute = PCancelable.fn(async (inputPath: string, onCancel: PCancelable.OnCancelFunction) => {
   const mutedPath = tempy.file({extension: path.extname(inputPath)});
