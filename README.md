@@ -18,6 +18,10 @@ Automatically installs the right version for your Mac (Intel or Apple Silicon).
 
     brew uninstall --zap --cask newkap
 
+## Upgrade
+
+    brew upgrade --cask newkap
+
 ## Quick Record Shortcut (Karabiner Elements)
 
 If you use [Karabiner Elements](https://karabiner-elements.pqrs.org/), you can add a **Hyper+R** (Hyper Meaning - https://github.com/MuntasirMalek/setup/blob/main/karabiner.json) shortcut to instantly record your entire screen:
