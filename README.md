@@ -8,10 +8,11 @@
 
 ## Quick Install
 
-    brew tap MuntasirMalek/newkap
-    brew install --cask newkap
+    brew tap MuntasirMalek/newkap && brew trust muntasirmalek/newkap && brew install --cask newkap
 
 Automatically installs the right version for your Mac (Intel or Apple Silicon).
+
+> **Note:** Homebrew requires you to explicitly trust third-party taps before installing casks. The `brew trust` step above handles this.
 
 ## Uninstall (clean, removes all app data)
 
@@ -81,8 +82,8 @@ Add this rule to your `karabiner.json` under `complex_modifications > rules`:
 
 Download the latest .dmg from [Releases](https://github.com/MuntasirMalek/NewKap/releases):
 
-- **Intel Mac**: NewKap-4.0.12-x64.dmg
-- **Apple Silicon (M1/M2/M3)**: NewKap-4.0.12-arm64.dmg
+- **Intel Mac**: NewKap-4.0.13-x64.dmg
+- **Apple Silicon (M1/M2/M3)**: NewKap-4.0.13-arm64.dmg
 
 ### First Launch (unsigned build)
 
