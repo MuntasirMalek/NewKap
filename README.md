@@ -86,8 +86,8 @@ Add this rule to your `karabiner.json` under `complex_modifications > rules`:
 
 Download the latest .dmg from [Releases](https://github.com/MuntasirMalek/NewKap/releases):
 
-- **Intel Mac**: NewKap-4.0.13-x64.dmg
-- **Apple Silicon (M1/M2/M3)**: NewKap-4.0.13-arm64.dmg
+- **Intel Mac**: NewKap-4.0.14-x64.dmg
+- **Apple Silicon (M1/M2/M3)**: NewKap-4.0.14-arm64.dmg
 
 ### First Launch (unsigned build)
 
