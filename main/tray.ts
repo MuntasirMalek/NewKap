@@ -13,6 +13,13 @@ import {pauseRecording, resumeRecording, stopRecording} from './aperture';
 let tray: Tray;
 let trayAnimation: NodeJS.Timeout | undefined;
 
+const clearTrayAnimation = () => {
+  if (trayAnimation) {
+    clearTimeout(trayAnimation);
+    trayAnimation = undefined;
+  }
+};
+
 const openContextMenu = async () => {
   tray.popUpContextMenu(await getCogMenu());
 };
@@ -28,11 +35,7 @@ const openPausedContextMenu = async () => {
 const openCropperWindow = () => windowManager.cropper?.open();
 
 export const initializeTray = (existingTray?: Tray) => {
-  if (existingTray) {
-    tray = existingTray;
-  } else {
-    tray = new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
-  }
+  tray = existingTray ?? new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
 
   tray.on('click', openCropperWindow);
   tray.on('right-click', openContextMenu);
@@ -45,13 +48,19 @@ export const initializeTray = (existingTray?: Tray) => {
 };
 
 export const disableTray = () => {
+  if (!tray) {
+    return;
+  }
+
   tray.removeListener('click', openCropperWindow);
   tray.removeListener('right-click', openContextMenu);
 };
 
 export const resetTray = () => {
-  if (trayAnimation) {
-    clearTimeout(trayAnimation);
+  clearTrayAnimation();
+
+  if (!tray) {
+    return;
   }
 
   tray.removeAllListeners('click');
@@ -63,8 +72,10 @@ export const resetTray = () => {
 };
 
 export const setRecordingTray = () => {
+  clearTrayAnimation();
   animateIcon();
 
+  tray.removeAllListeners('click');
   tray.removeAllListeners('right-click');
 
   // TODO: figure out why this is marked as missing. It's defined properly in the electron.d.ts file
@@ -73,10 +84,9 @@ export const setRecordingTray = () => {
 };
 
 export const setPausedTray = () => {
-  if (trayAnimation) {
-    clearTimeout(trayAnimation);
-  }
+  clearTrayAnimation();
 
+  tray.removeAllListeners('click');
   tray.removeAllListeners('right-click');
 
   tray.setImage(path.join(__dirname, '..', 'static', 'pauseTemplate.png'));

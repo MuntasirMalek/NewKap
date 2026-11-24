@@ -146,7 +146,7 @@ Active contributors who have had 3+ PRs merged can request maintainer access. Ma
 - Create releases
 - Triage issues
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for full details.
+See [contributing.md](contributing.md) for full details.
 
 ## Roadmap
 
@@ -163,4 +163,4 @@ NewKap is built on the incredible work of the [Kap](https://github.com/wulkano/K
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE.md)

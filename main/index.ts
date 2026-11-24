@@ -7,58 +7,65 @@
 
 import {app, Tray, dialog} from 'electron';
 import path from 'path';
+import {settings} from './common/settings';
+import {shouldKeepDockVisible, setupDockMenu, syncDockVisibility} from './utils/dock';
 
-// ── Block "Move to Applications folder" dialog permanently ──────────────────
+// Block "Move to Applications folder" dialog permanently.
 // Multiple copies of electron-util exist in dependencies, some using
 // showMessageBoxSync, others showMessageBox (async), and others showErrorBox.
-// We intercept ALL dialog methods to block any "Move to Applications" dialog.
+// We intercept all dialog methods to block any "Move to Applications" dialog.
 
-const _origShowMessageBoxSync = dialog.showMessageBoxSync;
-dialog.showMessageBoxSync = function(this: any) {
-  // eslint-disable-next-line prefer-rest-params
-  const args = Array.from(arguments);
-  const opts: any = args.length === 1 ? args[0] : args[1];
-  if (opts?.message?.includes('Move to Applications folder') || opts?.message?.includes('Applications folder')) {
+const isAppsFolderPrompt = (text?: string) =>
+  Boolean(text && (text.includes('Move to Applications folder') || text.includes('Applications folder')));
+
+const originalShowMessageBoxSync = dialog.showMessageBoxSync;
+dialog.showMessageBoxSync = ((...args: any[]) => {
+  const options = args.length === 1 ? args[0] : args[1];
+  if (isAppsFolderPrompt(options?.message)) {
     return 1;
   }
-  return _origShowMessageBoxSync.apply(dialog, args as any);
-} as any;
 
-const _origShowMessageBox = dialog.showMessageBox;
-dialog.showMessageBox = function(this: any) {
-  // eslint-disable-next-line prefer-rest-params
-  const args = Array.from(arguments);
-  const opts: any = args.length === 1 ? args[0] : args[1];
-  if (opts?.message?.includes('Move to Applications folder') || opts?.message?.includes('Applications folder')) {
-    return Promise.resolve({response: 1, checkboxChecked: false});
-  }
-  return _origShowMessageBox.apply(dialog, args as any);
-} as any;
+  return (originalShowMessageBoxSync as any).apply(dialog, args);
+}) as any;
 
-const _origShowErrorBox = dialog.showErrorBox;
-dialog.showErrorBox = function(title: string, content: string) {
-  if (title?.includes('Move to Applications folder') || title?.includes('Applications folder')) {
-    return; // Silently block
+const originalShowMessageBox = dialog.showMessageBox;
+dialog.showMessageBox = (async (...args: any[]) => {
+  const options = args.length === 1 ? args[0] : args[1];
+  if (isAppsFolderPrompt(options?.message)) {
+    return {response: 1, checkboxChecked: false};
   }
-  return _origShowErrorBox.call(dialog, title, content);
-} as any;
+
+  return (originalShowMessageBox as any).apply(dialog, args);
+}) as any;
+
+const originalShowErrorBox = dialog.showErrorBox;
+dialog.showErrorBox = ((title: string, content: string) => {
+  if (isAppsFolderPrompt(title)) {
+    return;
+  }
+
+  originalShowErrorBox.call(dialog, title, content);
+}) as any;
 
 // Override isInApplicationsFolder for any direct main-process checks
 Object.defineProperty(app, 'isInApplicationsFolder', {
   value: () => true,
   writable: true,
-  configurable: true,
+  configurable: true
 });
 
 const filesToOpen: string[] = [];
 let onExitCleanupComplete = false;
+let isQuitting = false;
+let appInitialized = false;
+let pendingCropperOpen = false;
 
 app.commandLine.appendSwitch('--enable-features', 'OverlayScrollbar');
 
 app.on('open-file', (event, filePath) => {
   event.preventDefault();
 
-  if (app.isReady()) {
+  if (appInitialized) {
     require('./common/analytics').track('editor/opened/running');
     require('./utils/open-files').openFiles(filePath);
   } else {
@@ -93,160 +100,196 @@ app.on('will-finish-launching', () => {
 });
 
 app.on('window-all-closed', () => {
-  app.dock.hide();
+  if (!shouldKeepDockVisible()) {
+    app.dock.hide();
+  }
 });
 
-// ── Phase 1: Instant tray ───────────────────────────────────────────────────
+app.on('activate', (_, hasVisibleWindows) => {
+  if (hasVisibleWindows) {
+    return;
+  }
+
+  if (!appInitialized) {
+    pendingCropperOpen = true;
+    return;
+  }
+
+  const {isPast} = require('./aperture');
+  const {windowManager} = require('./windows/manager');
+  if (!isPast() && !windowManager.cropper?.isOpen()) {
+    windowManager.cropper?.open();
+  }
+});
+
+// Phase 1: Instant tray
 (async () => {
   await app.whenReady();
 
-  app.dock.hide();
+  await syncDockVisibility();
   app.setAboutPanelOptions({copyright: 'Copyright © NewKap Contributors'});
 
-  // Show tray icon IMMEDIATELY — before loading any heavy modules
-  const tray = new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
-
-  // Temporary click handler until full tray module loads
-  let trayReady = false;
-  tray.on('click', () => {
-    if (trayReady) {
-      return; // Real handler is active
-    }
-
-    // If clicked before ready, wait for init then open
-    const waitForReady = setInterval(() => {
-      if (trayReady) {
-        clearInterval(waitForReady);
-        const {windowManager} = require('./windows/manager');
-        windowManager.cropper?.open();
-      }
-    }, 100);
+  // React immediately when the user toggles "Show in Dock" in Preferences
+  settings.onDidChange('showInDock', () => {
+    syncDockVisibility();
   });
 
-  // ── Yield helper: breaks up synchronous work so macOS event loop stays responsive
-  const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
+  // Show tray icon immediately — before loading any heavy modules
+  const tray = new Tray(path.join(__dirname, '..', 'static', 'menubarDefaultTemplate.png'));
 
-  // ── Phase 2: Background initialization (yielding between heavy requires) ──
+  // Queue click if triggered before Phase 2 completes (avoids polling/timer leaks)
+  tray.on('click', () => {
+    pendingCropperOpen = true;
+  });
+
+  // Yield helper: breaks up synchronous work so macOS event loop stays responsive
+  const tick = async () => new Promise<void>(resolve => {
+    setTimeout(resolve, 0);
+  });
+
+  // Phase 2: Background initialization (yielding between heavy requires)
   setImmediate(async () => {
-    // Error handling (lightweight)
-    require('./utils/errors').setupErrorHandling();
-    await tick();
+    try {
+      // Error handling (lightweight)
+      require('./utils/errors').setupErrorHandling();
+      await tick();
 
-    // Protocol setup (needed before windows load)
-    require('./utils/protocol').setupProtocol();
+      // Protocol setup (needed before windows load)
+      require('./utils/protocol').setupProtocol();
 
-    // Prepare Next.js renderer (instant in production — just sets file protocol)
-    const prepareNext = require('electron-next');
-    await prepareNext('./renderer');
-    await tick();
+      // Prepare Next.js renderer (instant in production — just sets file protocol)
+      const prepareNext = require('electron-next');
+      await prepareNext('./renderer');
+      await tick();
 
-    // Remote states (lightweight IPC setup)
-    require('./remote-states').setupRemoteStates();
+      // Remote states (lightweight IPC setup)
+      require('./remote-states').setupRemoteStates();
 
-    // Load all window modules — registers cropper, editor, etc. with windowManager
-    require('./windows/load');
-    await tick();
+      // Load all window modules — registers cropper, editor, etc. with windowManager
+      require('./windows/load');
+      await tick();
 
-    // Now replace the temporary tray with the full-featured one
-    tray.removeAllListeners('click');
-    tray.removeAllListeners('right-click');
-    const {initializeTray: wireUpTray} = require('./tray');
-    wireUpTray(tray);
-    trayReady = true;
+      // Now replace the temporary tray handler with the full-featured one
+      tray.removeAllListeners('click');
+      tray.removeAllListeners('right-click');
+      const {initializeTray: wireUpTray} = require('./tray');
+      wireUpTray(tray);
+      appInitialized = true;
 
-    // Process any deep links received during startup (e.g. kap://toggle)
-    markDeepLinkReady();
+      const {windowManager} = require('./windows/manager');
+      const {getOpenFileMenuItem} = require('./menus/common');
+      setupDockMenu({
+        openCropper: () => {
+          const {isPast} = require('./aperture');
+          if (!isPast()) {
+            windowManager.cropper?.open();
+          }
+        },
+        openVideo: () => {
+          getOpenFileMenuItem().click();
+        },
+        openPreferences: () => {
+          windowManager.preferences?.open();
+        }
+      });
 
-    // ── Phase 3: Deferred non-critical init (each step yields) ──────────
-    await tick();
+      // Process any deep links received during startup (e.g. kap://record)
+      markDeepLinkReady();
 
-    // Logging & telemetry (deferred — heavy modules, not needed for tray/recording)
-    try { require('electron-timber').hookConsole({main: true, renderer: true}); } catch {}
-    await tick();
-    try { require('./utils/sentry'); } catch {}
-    await tick();
+      // Phase 3: Deferred non-critical init (each step yields)
+      await tick();
 
-    const {initializeDevices} = require('./utils/devices');
-    const {initializeAnalytics} = require('./common/analytics');
-    const {initializeGlobalAccelerators} = require('./global-accelerators');
-    const {setUpExportsListeners} = require('./export');
-
-    initializeDevices();
-    initializeAnalytics();
-    initializeGlobalAccelerators();
-    setUpExportsListeners();
-
-    if (!app.isDefaultProtocolClient('kap')) {
-      app.setAsDefaultProtocolClient('kap');
-    }
-
-    await tick();
-
-    // Open cropper window
-    const {windowManager} = require('./windows/manager');
-    const {settings} = require('./common/settings');
-    const {ensureScreenCapturePermissions, hasMicrophoneAccess} = require('./common/system-permissions');
-
-    if (filesToOpen.length > 0) {
-      require('./common/analytics').track('editor/opened/startup');
-      require('./utils/open-files').openFiles(...filesToOpen);
-      require('./recording-history').hasActiveRecording().catch(console.error);
-    } else if (hadDeepLinkOnStartup) {
-      // Skip cropper — deep link (e.g. kap://record) is handling startup
-    } else {
+      // Logging (deferred — heavy module, not needed for tray/recording)
       try {
-        const {hasActiveRecording} = require('./recording-history');
-        if (
-          !(await hasActiveRecording()) &&
-          !app.getLoginItemSettings().wasOpenedAtLogin &&
-          ensureScreenCapturePermissions() &&
-          (!settings.get('recordAudio') || hasMicrophoneAccess())
-        ) {
+        require('electron-timber').hookConsole({main: true, renderer: true});
+      } catch {}
+
+      await tick();
+
+      const {initializeDevices} = require('./utils/devices');
+      const {initializeAnalytics} = require('./common/analytics');
+      const {initializeGlobalAccelerators} = require('./global-accelerators');
+      const {setUpExportsListeners} = require('./export');
+
+      initializeDevices();
+      initializeAnalytics();
+      initializeGlobalAccelerators();
+      setUpExportsListeners();
+
+      if (!app.isDefaultProtocolClient('kap')) {
+        app.setAsDefaultProtocolClient('kap');
+      }
+
+      await tick();
+
+      const {ensureScreenCapturePermissions, hasMicrophoneAccess} = require('./common/system-permissions');
+
+      if (filesToOpen.length > 0) {
+        require('./common/analytics').track('editor/opened/startup');
+        require('./utils/open-files').openFiles(...filesToOpen);
+        require('./recording-history').hasActiveRecording().catch(console.error);
+      } else if (hadDeepLinkOnStartup) {
+        // Skip cropper — deep link (e.g. kap://record) is handling startup
+      } else if (pendingCropperOpen) {
+        pendingCropperOpen = false;
+        windowManager.cropper?.open();
+      } else {
+        try {
+          const {hasActiveRecording} = require('./recording-history');
+          if (
+            !(await hasActiveRecording()) &&
+            !app.getLoginItemSettings().wasOpenedAtLogin &&
+            ensureScreenCapturePermissions() &&
+            (!settings.get('recordAudio') || hasMicrophoneAccess())
+          ) {
+            windowManager.cropper?.open();
+          }
+        } catch (error) {
+          console.error('Error during startup permission check:', error);
           windowManager.cropper?.open();
         }
-      } catch (error) {
-        console.error('Error during startup permission check:', error);
-        windowManager.cropper?.open();
-      }
-    }
-
-    // Plugin upgrade — fire and forget
-    const {is} = require('electron-util');
-    if (!is.development) {
-      const {plugins} = require('./plugins');
-      plugins.upgrade().catch((error: any) => {
-        console.log('Plugin upgrade failed (non-fatal):', error);
-      });
-    }
-
-    // Defer update check
-    setTimeout(() => {
-      if (is.development) {
-        return;
       }
 
-      const log = require('electron-log');
-      const {autoUpdater} = require('electron-updater');
-      const toMilliseconds = require('@sindresorhus/to-milliseconds');
+      // Plugin upgrade — fire and forget
+      const {is} = require('electron-util');
+      if (!is.development) {
+        const {plugins} = require('./plugins');
+        plugins.upgrade().catch((error: unknown) => {
+          console.log('Plugin upgrade failed (non-fatal):', error);
+        });
+      }
 
-      autoUpdater.logger = log;
-      autoUpdater.logger.transports.file.level = 'info';
-
-      const doCheck = async () => {
-        try {
-          await autoUpdater.checkForUpdates();
-        } catch (error) {
-          autoUpdater.logger?.error(error);
+      // Defer update check
+      setTimeout(() => {
+        if (is.development) {
+          return;
         }
-      };
 
-      setInterval(doCheck, toMilliseconds({hours: 1}));
-      doCheck();
-    }, 10_000);
+        const log = require('electron-log');
+        const {autoUpdater} = require('electron-updater');
+        const toMilliseconds = require('@sindresorhus/to-milliseconds');
+
+        autoUpdater.logger = log;
+        autoUpdater.logger.transports.file.level = 'info';
+
+        const doCheck = async () => {
+          try {
+            await autoUpdater.checkForUpdates();
+          } catch (error) {
+            autoUpdater.logger?.error(error);
+          }
+        };
+
+        setInterval(doCheck, toMilliseconds({hours: 1}));
+        doCheck();
+      }, 10_000);
+    } catch (error) {
+      console.error('Fatal error during startup initialization:', error);
+    }
   });
 })();
 
-// ── Quit handling ───────────────────────────────────────────────────────────
+// Quit handling
 
 const QUIT_TIMEOUT_MS = 5000;
 
@@ -267,28 +310,48 @@ const performQuitCleanup = async () => {
 };
 
 app.on('before-quit', (event: any) => {
-  if (!onExitCleanupComplete) {
-    event.preventDefault();
-
-    const forceQuit = setTimeout(() => {
-      console.log('Force quitting after timeout');
-      onExitCleanupComplete = true;
-      app.exit(0);
-    }, QUIT_TIMEOUT_MS);
-
-    performQuitCleanup().finally(() => {
-      clearTimeout(forceQuit);
-      onExitCleanupComplete = true;
-      app.quit();
-    });
+  if (onExitCleanupComplete) {
+    return;
   }
+
+  if (isQuitting) {
+    event.preventDefault();
+    return;
+  }
+
+  // Ask the user before quitting if any exports are still running, so we don't
+  // start force-quit timers or kill the app while the confirmation dialog is open.
+  if (appInitialized) {
+    const {confirmQuitWithActiveExports} = require('./export');
+    if (!confirmQuitWithActiveExports()) {
+      event.preventDefault();
+      return;
+    }
+  }
+
+  event.preventDefault();
+  isQuitting = true;
+
+  const forceQuit = setTimeout(() => {
+    console.log('Force quitting after timeout');
+    onExitCleanupComplete = true;
+    app.exit(0);
+  }, QUIT_TIMEOUT_MS);
+
+  performQuitCleanup().finally(() => {
+    clearTimeout(forceQuit);
+    onExitCleanupComplete = true;
+    app.quit();
+  });
 });
 
 // Handle terminal signals gracefully
+const handleTerminationSignal = (signal: NodeJS.Signals) => {
+  console.log(`Received ${signal}, quitting...`);
+  onExitCleanupComplete = true;
+  app.exit(0);
+};
+
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-  process.on(signal, () => {
-    console.log(`Received ${signal}, quitting...`);
-    onExitCleanupComplete = true;
-    app.exit(0);
-  });
+  process.on(signal, handleTerminationSignal);
 }

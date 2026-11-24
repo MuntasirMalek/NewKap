@@ -1,9 +1,13 @@
-// Vendored: https://github.com/sindresorhus/macos-release
+// Vendored & extended from https://github.com/sindresorhus/macos-release
 
 'use strict';
 const os = require('os');
 
 const nameMap = {
+  26: ['macOS 27', '27'],
+  25: ['Tahoe', '26'],
+  24: ['Sequoia', '15'],
+  23: ['Sonoma', '14'],
   22: ['Ventura', '13'],
   21: ['Monterey', '12'],
   20: ['Big Sur', '11'],
@@ -25,11 +29,18 @@ const nameMap = {
 } as const;
 
 export default function macosRelease(release?: string) {
-  const releaseCleaned = (release ?? os.release()).split('.')[0] as keyof typeof nameMap;
-  const [name, version] = nameMap[releaseCleaned] ?? ['Unknown', ''];
+  const rawRelease = release ?? os.release();
+  const releaseMajor = rawRelease.split('.')[0] as keyof typeof nameMap;
+  const known = nameMap[releaseMajor];
 
+  if (known) {
+    const [name, version] = known;
+    return {name, version};
+  }
+
+  const systemVersion = typeof process.getSystemVersion === 'function' ? process.getSystemVersion() : '';
   return {
-    name,
-    version
+    name: 'macOS',
+    version: systemVersion || `Darwin ${rawRelease}`
   };
 }

@@ -1,11 +1,66 @@
-import PCancelable from 'p-cancelable';
+/* eslint-disable array-element-newline */
+import PCancelable, {CancelError} from 'p-cancelable';
 import tempy from 'tempy';
-import {convert, gifski} from './process';
+import {convert, gifski, ProcessOptions} from './process';
 import {areDimensionsEven, conditionalArgs, ConvertOptions, GIF_MAX_FPS, makeEven} from './utils';
+import {
+  getH264VideoToolboxArgs,
+  getHevcVideoToolboxArgs,
+  HardwareEncoder,
+  hasHardwareEncoder
+} from '../utils/video-encoder';
 import {settings} from '../common/settings';
 import os from 'os';
 import {Format} from '../common/types';
 import fs from 'fs';
+
+// eslint-disable-next-line @typescript-eslint/promise-function-async
+const convertWithHardwareFallback = ({
+  outputPath,
+  processOptions,
+  encoder,
+  hardwareArgs,
+  softwareArgs
+}: {
+  outputPath: string;
+  processOptions: ProcessOptions;
+  encoder: HardwareEncoder;
+  hardwareArgs: string[];
+  softwareArgs: string[];
+}) => PCancelable.fn(async (onCancel: PCancelable.OnCancelFunction) => {
+  let isCanceled = false;
+  let activeProcess: PCancelable<string> | undefined;
+
+  onCancel(() => {
+    isCanceled = true;
+    activeProcess?.cancel();
+  });
+
+  if (await hasHardwareEncoder(encoder)) {
+    if (isCanceled) {
+      return outputPath;
+    }
+
+    try {
+      activeProcess = convert(outputPath, processOptions, hardwareArgs);
+      return await activeProcess;
+    } catch (error) {
+      if (isCanceled || (error as CancelError)?.isCanceled) {
+        throw error;
+      }
+
+      console.warn(`Hardware encoder ${encoder} failed, falling back to software encoder:`, error);
+      fs.rmSync(outputPath, {force: true});
+    }
+  }
+
+  if (isCanceled) {
+    return outputPath;
+  }
+
+  activeProcess = convert(outputPath, processOptions, softwareArgs);
+  return activeProcess;
+})();
 
 // GIF export: trim the clip with ffmpeg if a range is selected, then encode it
 // with gifski. gifski reads video directly (its bundled binary statically links
@@ -30,23 +85,43 @@ const convertToGif = PCancelable.fn(async (options: ConvertOptions, onCancel: PC
     if (options.shouldCrop) {
       trimmedPath = tempy.file({extension: 'mp4'});
 
-      const trimProcess = convert(trimmedPath, {
+      const trimProcessOptions: ProcessOptions = {
         onProgress: (progress, estimate) => {
           options.onProgress('Converting', progress, estimate);
         },
         startTime: options.startTime,
         endTime: options.endTime
-      }, conditionalArgs(
+      };
+
+      const commonTrimArgs = conditionalArgs(
         '-i', options.inputPath,
         '-ss', options.startTime.toString(),
         '-to', options.endTime.toString(),
-        '-an', // GIFs have no audio track
-        // gifski re-quantizes to a 256-colour GIF, so the intermediate quality
-        // barely matters — use the fastest x264 preset to keep the trim cheap.
-        '-preset', 'ultrafast',
-        '-crf', '18',
-        trimmedPath
-      ));
+        '-an' // GIFs have no audio track
+      );
+
+      const trimProcess = convertWithHardwareFallback({
+        outputPath: trimmedPath,
+        processOptions: trimProcessOptions,
+        encoder: 'h264_videotoolbox',
+        hardwareArgs: [
+          ...commonTrimArgs,
+          ...getH264VideoToolboxArgs({
+            width: makeEven(options.width),
+            height: makeEven(options.height),
+            fps
+          }),
+          trimmedPath
+        ],
+        softwareArgs: [
+          ...commonTrimArgs,
+          // Gifski re-quantizes to a 256-colour GIF, so the intermediate quality
+          // barely matters — use the fastest x264 preset to keep the trim cheap.
+          '-preset', 'ultrafast',
+          '-crf', '18',
+          trimmedPath
+        ]
+      });
 
       onCancel(() => {
         trimProcess.cancel();
@@ -92,32 +167,55 @@ const convertToGif = PCancelable.fn(async (options: ConvertOptions, onCancel: PC
 });
 
 // eslint-disable-next-line @typescript-eslint/promise-function-async
-const convertToMp4 = (options: ConvertOptions) => convert(options.outputPath, {
-  onProgress: (progress, estimate) => {
-    options.onProgress('Converting', progress, estimate);
-  },
-  startTime: options.startTime,
-  endTime: options.endTime
-}, conditionalArgs(
-  '-i', options.inputPath,
-  '-r', options.fps.toString(),
-  {
-    args: ['-an'],
-    if: options.shouldMute
-  },
-  {
-    args: [
-      '-s',
-      `${makeEven(options.width)}x${makeEven(options.height)}`,
-      '-ss',
-      options.startTime.toString(),
-      '-to',
-      options.endTime.toString()
+const convertToMp4 = (options: ConvertOptions) => {
+  const processOptions: ProcessOptions = {
+    onProgress: (progress, estimate) => {
+      options.onProgress('Converting', progress, estimate);
+    },
+    startTime: options.startTime,
+    endTime: options.endTime
+  };
+
+  const evenWidth = makeEven(options.width);
+  const evenHeight = makeEven(options.height);
+  const tailArgs = conditionalArgs(
+    {
+      args: ['-an'],
+      if: options.shouldMute
+    },
+    {
+      args: [
+        '-s',
+        `${evenWidth}x${evenHeight}`,
+        '-ss',
+        options.startTime.toString(),
+        '-to',
+        options.endTime.toString()
+      ],
+      if: options.shouldCrop || !areDimensionsEven(options)
+    },
+    options.outputPath
+  );
+
+  return convertWithHardwareFallback({
+    outputPath: options.outputPath,
+    processOptions,
+    encoder: 'h264_videotoolbox',
+    hardwareArgs: [
+      '-i', options.inputPath,
+      '-r', options.fps.toString(),
+      ...getH264VideoToolboxArgs({width: evenWidth, height: evenHeight, fps: options.fps}),
+      ...tailArgs
     ],
-    if: options.shouldCrop || !areDimensionsEven(options)
-  },
-  options.outputPath
-));
+    softwareArgs: [
+      '-i', options.inputPath,
+      '-r', options.fps.toString(),
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      ...tailArgs
+    ]
+  });
+};
 
 // eslint-disable-next-line @typescript-eslint/promise-function-async
 const convertToWebm = (options: ConvertOptions) => convert(options.outputPath, {
@@ -195,36 +293,57 @@ const convertToAv1 = (options: ConvertOptions) => convert(options.outputPath, {
 ));
 
 // eslint-disable-next-line @typescript-eslint/promise-function-async
-const convertToHevc = (options: ConvertOptions) => convert(options.outputPath, {
-  onProgress: (progress, estimate) => {
-    options.onProgress('Converting', progress, estimate);
-  },
-  startTime: options.startTime,
-  endTime: options.endTime
-}, conditionalArgs(
-  '-i', options.inputPath,
-  '-r', options.fps.toString(),
-  '-c:v', 'libx265',
-  '-c:a', 'libopus',
-  '-preset', 'medium',
-  '-tag:v', 'hvc1', // Metadata for macOS
-  {
-    args: ['-an'],
-    if: options.shouldMute
-  },
-  {
-    args: [
-      '-s',
-      `${makeEven(options.width)}x${makeEven(options.height)}`,
-      '-ss',
-      options.startTime.toString(),
-      '-to',
-      options.endTime.toString()
+const convertToHevc = (options: ConvertOptions) => {
+  const processOptions: ProcessOptions = {
+    onProgress: (progress, estimate) => {
+      options.onProgress('Converting', progress, estimate);
+    },
+    startTime: options.startTime,
+    endTime: options.endTime
+  };
+
+  const evenWidth = makeEven(options.width);
+  const evenHeight = makeEven(options.height);
+  const tailArgs = conditionalArgs(
+    '-c:a', 'libopus',
+    {
+      args: ['-an'],
+      if: options.shouldMute
+    },
+    {
+      args: [
+        '-s',
+        `${evenWidth}x${evenHeight}`,
+        '-ss',
+        options.startTime.toString(),
+        '-to',
+        options.endTime.toString()
+      ],
+      if: options.shouldCrop || !areDimensionsEven(options)
+    },
+    options.outputPath
+  );
+
+  return convertWithHardwareFallback({
+    outputPath: options.outputPath,
+    processOptions,
+    encoder: 'hevc_videotoolbox',
+    hardwareArgs: [
+      '-i', options.inputPath,
+      '-r', options.fps.toString(),
+      ...getHevcVideoToolboxArgs({width: evenWidth, height: evenHeight, fps: options.fps}),
+      ...tailArgs
     ],
-    if: options.shouldCrop || !areDimensionsEven(options)
-  },
-  options.outputPath
-));
+    softwareArgs: [
+      '-i', options.inputPath,
+      '-r', options.fps.toString(),
+      '-c:v', 'libx265',
+      '-preset', 'medium',
+      '-tag:v', 'hvc1', // Metadata for macOS
+      ...tailArgs
+    ]
+  });
+};
 
 // eslint-disable-next-line @typescript-eslint/promise-function-async
 const convertToApng = (options: ConvertOptions) => convert(options.outputPath, {
@@ -255,19 +374,41 @@ const convertToApng = (options: ConvertOptions) => convert(options.outputPath, {
 ));
 
 // eslint-disable-next-line @typescript-eslint/promise-function-async
-export const crop = (options: ConvertOptions) => convert(options.outputPath, {
-  onProgress: (progress, estimate) => {
-    options.onProgress('Cropping', progress, estimate);
-  },
-  startTime: options.startTime,
-  endTime: options.endTime
-}, conditionalArgs(
-  '-i', options.inputPath,
-  '-s', `${makeEven(options.width)}x${makeEven(options.height)}`,
-  '-ss', options.startTime.toString(),
-  '-to', options.endTime.toString(),
-  options.outputPath
-));
+export const crop = (options: ConvertOptions) => {
+  const processOptions: ProcessOptions = {
+    onProgress: (progress, estimate) => {
+      options.onProgress('Cropping', progress, estimate);
+    },
+    startTime: options.startTime,
+    endTime: options.endTime
+  };
+
+  const evenWidth = makeEven(options.width);
+  const evenHeight = makeEven(options.height);
+  const cropTailArgs = [
+    '-s', `${evenWidth}x${evenHeight}`,
+    '-ss', options.startTime.toString(),
+    '-to', options.endTime.toString(),
+    options.outputPath
+  ];
+
+  return convertWithHardwareFallback({
+    outputPath: options.outputPath,
+    processOptions,
+    encoder: 'h264_videotoolbox',
+    hardwareArgs: [
+      '-i', options.inputPath,
+      ...getH264VideoToolboxArgs({width: evenWidth, height: evenHeight, fps: options.fps}),
+      ...cropTailArgs
+    ],
+    softwareArgs: [
+      '-i', options.inputPath,
+      '-c:v', 'libx264',
+      '-pix_fmt', 'yuv420p',
+      ...cropTailArgs
+    ]
+  });
+};
 
 export default new Map([
   [Format.gif, convertToGif],

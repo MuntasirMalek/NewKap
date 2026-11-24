@@ -33,19 +33,6 @@ export class Plugins extends EventEmitter {
 
   private _loaded = false;
 
-  constructor() {
-    super();
-    // Don't do file I/O in constructor — defer to first access
-  }
-
-  private ensureLoaded() {
-    if (!this._loaded) {
-      this._loaded = true;
-      this.makePluginsDir();
-      this.loadPlugins();
-    }
-  }
-
   async install(name: string): Promise<InstalledPlugin | void> {
     this.ensureLoaded();
     track(`plugin/installed/${name}`);
@@ -112,6 +99,7 @@ export class Plugins extends EventEmitter {
   }
 
   async uninstall(name: string) {
+    this.ensureLoaded();
     track(`plugin/uninstalled/${name}`);
     this.modifyMainPackageJson(pkg => {
       delete pkg.dependencies[name];
@@ -188,6 +176,14 @@ export class Plugins extends EventEmitter {
   openPluginConfig = async (pluginName: string) => {
     return windowManager.config?.open(pluginName);
   };
+
+  private ensureLoaded() {
+    if (!this._loaded) {
+      this._loaded = true;
+      this.makePluginsDir();
+      this.loadPlugins();
+    }
+  }
 
   private makePluginsDir() {
     if (!fs.existsSync(this.packageJsonPath)) {

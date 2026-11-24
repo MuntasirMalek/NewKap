@@ -16,21 +16,19 @@
   "scripts": {
     "lint": "xo",
     "lint:fix": "xo --fix",
+    "typecheck": "tsc --noEmit",
     "test:main": "TS_NODE_PROJECT=test/tsconfig.json ava",
     "test:ci": "yarn test:main --tap | tap-xunit > ~/reports/ava.xml",
     "test": "yarn lint && yarn test:main",
     "start": "tsc && run-electron .",
     "build-main": "tsc",
-    "build-renderer": "next build renderer && next export renderer",
+    "build-renderer": "node scripts/build-renderer.js",
     "build": "yarn build-main && yarn build-renderer",
-    "dist": "npm run build && electron-builder",
-    "pack": "npm run build && electron-builder --dir",
+    "dist": "yarn build && electron-builder",
+    "pack": "yarn build && electron-builder --dir",
     "postinstall": "electron-builder install-app-deps && node scripts/patch-aperture.js && node scripts/download-gifski.js && node scripts/patch-mac-helpers.js",
     "sentry-version": "echo \"$npm_package_name@$npm_package_version\"",
     "dev": "next dev renderer"
-  },
-  "bundle": {
-    "name": "Kap"
   },
   "dependencies": {
     "@sentry/browser": "^6.2.2",
@@ -53,7 +51,7 @@
     "electron-util": "^0.14.2",
     "ensure-error": "^3.0.1",
     "execa": "5.0.0",
-    "ffmpeg-static": "^4.4.1",
+    "ffmpeg-static": "^5.3.0",
     "got": "^9.6.0",
     "insight": "^0.10.3",
     "is-online": "^8.4.0",
@@ -242,6 +240,7 @@
   },
   "build": {
     "appId": "com.newkap.app",
+    "afterPack": "./scripts/after-pack.js",
     "afterSign": "electron-builder-notarize",
     "protocols": {
       "name": "kap",
@@ -257,7 +256,8 @@
       "vendor/gifski/**"
     ],
     "asarUnpack": [
-      "vendor/gifski/**"
+      "vendor/gifski/**",
+      "**/*.node"
     ],
     "mac": {
       "electronUpdaterCompatibility": ">=2.16",

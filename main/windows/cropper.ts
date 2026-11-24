@@ -100,10 +100,10 @@ const openCropperWindow = async () => {
     const granted = await ensureMicrophonePermissions(async () => {
       const {response} = await dialog.showMessageBox({
         type: 'warning',
-        buttons: ['Open System Preferences', 'Continue'],
+        buttons: ['Open System Settings', 'Continue', 'Cancel'],
         defaultId: 1,
-        message: 'Kap cannot access the microphone.',
-        detail: 'Audio recording is enabled but Kap does not have access to the microphone. Continue without audio or grant Kap access to the microphone the System Preferences.',
+        message: 'NewKap cannot access the microphone.',
+        detail: 'Audio recording is enabled, but NewKap does not have access to the microphone. Continue without audio or grant NewKap microphone access in System Settings.',
         cancelId: 2
       });
 

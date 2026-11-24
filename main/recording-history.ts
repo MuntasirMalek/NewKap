@@ -96,7 +96,12 @@ export const updatePluginState = (state: ActiveRecording['plugins']) => {
 };
 
 export const stopCurrentRecording = (recordingName?: string) => {
-  const {filePath, name} = recordingHistory.get('activeRecording');
+  const activeRecording = recordingHistory.get('activeRecording');
+  if (!activeRecording) {
+    return;
+  }
+
+  const {filePath, name} = activeRecording;
   addRecording({
     filePath,
     name: recordingName ?? name,
@@ -180,8 +185,8 @@ const handleRecording = async (recording: ActiveRecording) => {
   });
 
   return windowManager.dialog?.open({
-    title: 'Kap didn\'t shut down correctly.',
-    detail: 'Looks like Kap crashed during a recording. Kap was able to locate the file and it appears to be playable.',
+    title: 'NewKap didn\'t shut down correctly.',
+    detail: 'Looks like NewKap crashed during a recording. NewKap was able to locate the file and it appears to be playable.',
     buttons: [
       'Close',
       {
@@ -225,8 +230,8 @@ const knownErrors = [{
 
 const handleCorruptRecording = async (recording: ActiveRecording, error: string) => {
   const options: any = {
-    title: 'Kap didn\'t shut down correctly.',
-    detail: `Looks like Kap crashed during a recording. We were able to locate the file. Unfortunately, it appears to be corrupt.\n\n${error}`,
+    title: 'NewKap didn\'t shut down correctly.',
+    detail: `Looks like NewKap crashed during a recording. We were able to locate the file. Unfortunately, it appears to be corrupt.\n\n${error}`,
     cancelId: 0,
     defaultId: 2,
     buttons: [
@@ -294,7 +299,7 @@ const handleCorruptRecording = async (recording: ActiveRecording, error: string)
       }
 
       return updateUi({
-        message: 'Kap was unable to repair the recording.',
+        message: 'NewKap was unable to repair the recording.',
         defaultId: 2,
         buttons: [
           'Close',

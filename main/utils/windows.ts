@@ -18,7 +18,9 @@ export interface MacWindow {
 
 const APP_BLACKLIST = [
   'Kap',
-  'Kap Beta'
+  'Kap Beta',
+  'NewKap',
+  'NewKap Beta'
 ];
 
 const store = new Store<{

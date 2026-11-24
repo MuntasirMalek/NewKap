@@ -85,7 +85,10 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   const {cropperBounds, screenBounds, displayId} = options;
 
-  cropperBounds.y = screenBounds.height - (cropperBounds.y + cropperBounds.height);
+  const cropArea = {
+    ...cropperBounds,
+    y: screenBounds.height - (cropperBounds.y + cropperBounds.height)
+  };
 
   const {
     record60fps,
@@ -96,7 +99,7 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   apertureOptions = {
     fps: record60fps ? 60 : 30,
-    cropArea: cropperBounds,
+    cropArea,
     showCursor,
     highlightClicks,
     screenId: displayId
@@ -164,15 +167,22 @@ export const startRecording = async (options: StartRecordingOptions) => {
         aperture = createAperture();
         continue;
       }
+
+      break;
     }
   }
 
   if (lastError) {
     track('recording/stopped/error');
-    showError(lastError as any, {title: 'Recording error', plugin: undefined});
+    const errorMessage = String(lastError?.message ?? lastError);
+    const isPermissionOrCaptureError = errorMessage.includes('-11805') || errorMessage.includes('Cannot Record');
+    const errorTitle = isPermissionOrCaptureError ?
+      'Recording error — check Screen Recording permissions in System Settings and relaunch NewKap' :
+      'Recording error';
+    showError(lastError, {title: errorTitle, plugin: undefined});
     past = undefined;
-    cleanup();
-    return;
+    await cleanup();
+    return false;
   }
 
   const startTime = (Date.now() - past) / 1000;
@@ -201,6 +211,7 @@ export const startRecording = async (options: StartRecordingOptions) => {
 
   await callPlugins('didStartRecording');
   updatePluginState(serializeEditPluginState());
+  return true;
 };
 
 export const stopRecording = async () => {
@@ -254,18 +265,23 @@ export const stopRecordingWithNoEdit = async () => {
     // Add timeout to prevent hanging on quit
     await Promise.race([
       aperture.stopRecording(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('Stop recording timed out')), 5000))
+      new Promise<void>((resolve, reject) => {
+        void resolve;
+        setTimeout(() => {
+          reject(new Error('Stop recording timed out'));
+        }, 5000);
+      })
     ]);
     setOverallDuration(0);
     setCurrentDurationStart(0);
   } catch (error) {
     console.error('Error stopping recording:', error);
-    cleanup();
+    await cleanup();
     return;
   }
 
   try {
-    cleanup();
+    await cleanup();
   } finally {
     track('recording/quit');
     stopCurrentRecording(recordingName);
@@ -292,7 +308,8 @@ export const pauseRecording = async () => {
   } catch (error) {
     track('recording/paused/error');
     showError(error as any, {title: 'Recording error', plugin: undefined});
-    cleanup();
+    past = undefined;
+    await cleanup();
   }
 };
 
@@ -315,6 +332,7 @@ export const resumeRecording = async () => {
   } catch (error) {
     track('recording/resumed/error');
     showError(error as any, {title: 'Recording error', plugin: undefined});
-    cleanup();
+    past = undefined;
+    await cleanup();
   }
 };

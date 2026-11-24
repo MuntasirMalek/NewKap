@@ -1,4 +1,4 @@
-import {ipcMain, dialog, app} from 'electron';
+import {ipcMain, dialog} from 'electron';
 import {EventEmitter} from 'events';
 import PCancelable, {CancelError, OnCancelFunction} from 'p-cancelable';
 import Conversion from './conversion';
@@ -242,6 +242,33 @@ interface ExportsEvents {
   updated: (state: ExportState) => void;
 }
 
+export const confirmQuitWithActiveExports = (): boolean => {
+  if (!Export.all.some(exp => exp.status === ExportStatus.inProgress)) {
+    return true;
+  }
+
+  windowManager.exports?.open();
+
+  let shouldQuit = false;
+  ensureDockIsShowingSync(() => {
+    const buttonIndex = dialog.showMessageBoxSync({
+      type: 'question',
+      buttons: [
+        'Continue',
+        'Quit'
+      ],
+      defaultId: 0,
+      cancelId: 0,
+      message: 'Do you want to continue exporting?',
+      detail: 'NewKap is currently exporting files. If you quit, the export task will be canceled.'
+    });
+
+    shouldQuit = buttonIndex === 1;
+  });
+
+  return shouldQuit;
+};
+
 export const setUpExportsListeners = () => {
   ipcMain.on('drag-export', async (event: any, id: string) => {
     const exportMap = Export.exportsMap.get(id);
@@ -308,29 +335,5 @@ export const setUpExportsListeners = () => {
     newExport.start();
 
     return newExport.id;
-  });
-
-  app.on('before-quit', event => {
-    if (Export.all.some(exp => exp.status === ExportStatus.inProgress)) {
-      windowManager.exports?.open();
-
-      ensureDockIsShowingSync(() => {
-        const buttonIndex = dialog.showMessageBoxSync({
-          type: 'question',
-          buttons: [
-            'Continue',
-            'Quit'
-          ],
-          defaultId: 0,
-          cancelId: 1,
-          message: 'Do you want to continue exporting?',
-          detail: 'Kap is currently exporting files. If you quit, the export task will be canceled.'
-        });
-
-        if (buttonIndex === 0) {
-          event.preventDefault();
-        }
-      });
-    }
   });
 };

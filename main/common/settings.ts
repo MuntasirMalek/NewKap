@@ -7,7 +7,7 @@ const {defaultInputDeviceId} = require('./constants');
 const shortcutToAccelerator = require('../utils/shortcut-to-accelerator');
 
 export const shortcuts = {
-  triggerCropper: 'Toggle Kap'
+  triggerCropper: 'Toggle NewKap'
 };
 
 const shortcutSchema = {
@@ -33,6 +33,7 @@ interface Settings {
     character: string;
   };
   lossyCompression: boolean;
+  showInDock: boolean;
   enableShortcuts: boolean;
   shortcuts: {
     [key in keyof typeof shortcuts]: string
@@ -107,6 +108,10 @@ export const settings = new Store<Settings>({
       }
     },
     lossyCompression: {
+      type: 'boolean',
+      default: false
+    },
+    showInDock: {
       type: 'boolean',
       default: false
     },

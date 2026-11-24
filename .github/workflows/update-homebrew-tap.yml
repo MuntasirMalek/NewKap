@@ -3,29 +3,70 @@ name: Update Homebrew Tap
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. v4.0.13); defaults to latest release'
+        required: false
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
   update-tap:
     runs-on: ubuntu-latest
     steps:
-      - name: Get release info
+      - name: Get release info and verify DMG checksums
         id: release
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          VERSION="${{ github.event.release.tag_name }}"
-          VERSION="${VERSION#v}"  # strip leading 'v'
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          set -euo pipefail
 
-          # Download and hash the x64 DMG
-          X64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${{ github.event.release.tag_name }}/NewKap-${VERSION}-x64.dmg"
-          ARM64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${{ github.event.release.tag_name }}/NewKap-${VERSION}-arm64.dmg"
+          TAG="${EVENT_TAG:-$INPUT_TAG}"
+          if [ -z "$TAG" ]; then
+            TAG=$(gh release view --repo "${{ github.repository }}" --json tagName --jq '.tagName')
+          fi
 
-          X64_SHA=$(curl -sL "$X64_URL" | shasum -a 256 | cut -d' ' -f1)
-          ARM64_SHA=$(curl -sL "$ARM64_URL" | shasum -a 256 | cut -d' ' -f1)
+          VERSION="${TAG#v}"
+          if [ -z "$VERSION" ]; then
+            echo "Error: could not determine release version from tag '$TAG'" >&2
+            exit 1
+          fi
 
-          echo "x64_url=$X64_URL" >> $GITHUB_OUTPUT
-          echo "arm64_url=$ARM64_URL" >> $GITHUB_OUTPUT
-          echo "x64_sha=$X64_SHA" >> $GITHUB_OUTPUT
-          echo "arm64_sha=$ARM64_SHA" >> $GITHUB_OUTPUT
+          X64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${TAG}/NewKap-${VERSION}-x64.dmg"
+          ARM64_URL="https://github.com/MuntasirMalek/NewKap/releases/download/${TAG}/NewKap-${VERSION}-arm64.dmg"
+
+          TMP_DIR=$(mktemp -d)
+          trap 'rm -rf "$TMP_DIR"' EXIT
+
+          echo "Downloading ${X64_URL}..."
+          curl -fsSL --retry 3 --retry-delay 5 "$X64_URL" -o "${TMP_DIR}/x64.dmg"
+          echo "Downloading ${ARM64_URL}..."
+          curl -fsSL --retry 3 --retry-delay 5 "$ARM64_URL" -o "${TMP_DIR}/arm64.dmg"
+
+          if [ ! -s "${TMP_DIR}/x64.dmg" ] || [ ! -s "${TMP_DIR}/arm64.dmg" ]; then
+            echo "Error: downloaded DMG is empty" >&2
+            exit 1
+          fi
+
+          X64_SHA=$(shasum -a 256 "${TMP_DIR}/x64.dmg" | awk '{print $1}')
+          ARM64_SHA=$(shasum -a 256 "${TMP_DIR}/arm64.dmg" | awk '{print $1}')
+
+          for sha in "$X64_SHA" "$ARM64_SHA"; do
+            if ! [[ "$sha" =~ ^[0-9a-f]{64}$ ]]; then
+              echo "Error: invalid SHA-256 hash '$sha'" >&2
+              exit 1
+            fi
+          done
+
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "x64_sha=${X64_SHA}" >> "$GITHUB_OUTPUT"
+          echo "arm64_sha=${ARM64_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout tap repo
         uses: actions/checkout@v4
@@ -34,52 +75,60 @@ jobs:
           token: ${{ secrets.TAP_GITHUB_TOKEN }}
 
       - name: Update cask formula
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          X64_SHA: ${{ steps.release.outputs.x64_sha }}
+          ARM64_SHA: ${{ steps.release.outputs.arm64_sha }}
         run: |
-          VERSION="${{ steps.release.outputs.version }}"
-          X64_SHA="${{ steps.release.outputs.x64_sha }}"
-          ARM64_SHA="${{ steps.release.outputs.arm64_sha }}"
-          X64_URL="${{ steps.release.outputs.x64_url }}"
-          ARM64_URL="${{ steps.release.outputs.arm64_url }}"
-
-          cat > Casks/newkap.rb << EOF
+          set -euo pipefail
+          cat > Casks/newkap.rb << 'EOF'
           cask "newkap" do
-            version "${VERSION}"
+            arch arm: "arm64", intel: "x64"
 
-            on_intel do
-              sha256 "${X64_SHA}"
-              url "${X64_URL}"
-            end
+            version "__VERSION__"
+            sha256 arm:   "__ARM64_SHA__",
+                   intel: "__X64_SHA__"
 
-            on_arm do
-              sha256 "${ARM64_SHA}"
-              url "${ARM64_URL}"
-            end
-
+            url "https://github.com/MuntasirMalek/NewKap/releases/download/v#{version}/NewKap-#{version}-#{arch}.dmg"
             name "NewKap"
             desc "Community-driven screen recorder (Kap fork)"
             homepage "https://github.com/MuntasirMalek/NewKap"
 
+            livecheck do
+              url :url
+              strategy :github_latest
+            end
+
             app "NewKap.app"
 
-            postflight do
-              system_command "/usr/bin/xattr", args: ["-cr", "#{appdir}/NewKap.app"]
-              system_command "/usr/bin/tccutil", args: ["reset", "ScreenCapture", "com.newkap.app"]
+            postflight_steps do
+              run "/usr/bin/xattr", args: ["-cr", "{{appdir}}/NewKap.app"]
             end
 
             zap trash: [
               "~/Library/Application Support/NewKap",
-              "~/Library/Application Support/Kap",
-              "~/Library/Preferences/com.newkap.app.plist",
+              "~/Library/Caches/com.newkap.app",
+              "~/Library/Caches/com.newkap.app.ShipIt",
               "~/Library/Logs/NewKap",
-              "~/Library/Logs/Kap",
+              "~/Library/Preferences/com.newkap.app.plist",
+              "~/Library/Saved Application State/com.newkap.app.savedState",
             ]
           end
           EOF
 
+          sed -i "s/__VERSION__/${VERSION}/g; s/__ARM64_SHA__/${ARM64_SHA}/g; s/__X64_SHA__/${X64_SHA}/g" Casks/newkap.rb
+
       - name: Commit and push
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Casks/newkap.rb
-          git commit -m "Update NewKap to ${{ github.event.release.tag_name }}"
+          if git diff --cached --quiet; then
+            echo "Casks/newkap.rb is already up to date for ${TAG}."
+            exit 0
+          fi
+          git commit -m "Update NewKap to ${TAG}"
           git push

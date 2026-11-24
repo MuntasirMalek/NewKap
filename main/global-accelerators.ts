@@ -16,15 +16,15 @@ const handlers = new Map<string, () => void>([
 
 // If no action is passed, it resets
 export const setCropperShortcutAction = (action = openCropper) => {
-  if (settings.get('enableShortcuts') && settings.get('shortcuts.triggerCropper')) {
-    handlers.set('cropperShortcut', action);
+  handlers.set('triggerCropper', action);
 
+  if (settings.get('enableShortcuts') && settings.get('shortcuts.triggerCropper')) {
     const shortcut = settings.get<string, string>('shortcuts.triggerCropper');
     if (globalShortcut.isRegistered(shortcut)) {
       globalShortcut.unregister(shortcut);
     }
 
-    globalShortcut.register(shortcut, action);
+    registerShortcut(shortcut, action);
   }
 };
 

@@ -1,54 +1,25 @@
 import {systemPreferences, shell, dialog, app} from 'electron';
 const {ensureDockIsShowing} = require('../utils/dock');
 
-// Safe wrapper for mac-screen-capture-permissions (unreliable on macOS Sonoma+)
+// Safe wrapper for mac-screen-capture-permissions
 let hasScreenCapturePermission: () => boolean;
 let hasPromptedForPermission: () => boolean;
 
-const darwinMajor = Number.parseInt(require('os').release().split('.')[0], 10);
-const isSonomaOrNewer = darwinMajor >= 23;
-
-if (isSonomaOrNewer) {
-  // On Sonoma+, mac-screen-capture-permissions can be unreliable.
-  // We still try to use it, but fall back gracefully.
-  try {
-    const macPerms = require('mac-screen-capture-permissions');
-    hasScreenCapturePermission = macPerms.hasScreenCapturePermission;
-    hasPromptedForPermission = macPerms.hasPromptedForPermission;
-  } catch (error) {
-    console.error('mac-screen-capture-permissions failed on Sonoma:', error);
-    // On failure, assume permission granted and let aperture handle errors
-    hasScreenCapturePermission = () => true;
-    hasPromptedForPermission = () => true;
-  }
-} else {
-  try {
-    const macPerms = require('mac-screen-capture-permissions');
-    hasScreenCapturePermission = macPerms.hasScreenCapturePermission;
-    hasPromptedForPermission = macPerms.hasPromptedForPermission;
-  } catch (error) {
-    console.error('mac-screen-capture-permissions failed to load:', error);
-    hasScreenCapturePermission = () => true;
-    hasPromptedForPermission = () => true;
-  }
+try {
+  const macPerms = require('mac-screen-capture-permissions');
+  hasScreenCapturePermission = macPerms.hasScreenCapturePermission;
+  hasPromptedForPermission = macPerms.hasPromptedForPermission;
+} catch (error) {
+  console.error('mac-screen-capture-permissions failed to load:', error);
+  // On failure, assume permission granted and let aperture surface any capture error
+  hasScreenCapturePermission = () => true;
+  hasPromptedForPermission = () => true;
 }
 
 let isDialogShowing = false;
 
-// Use the correct URL scheme for macOS Sonoma+ (System Settings vs System Preferences)
-const getSystemSettingsUrl = (privacySection: string) => {
-  const majorVersion = Number.parseInt(require('os').release().split('.')[0], 10);
-  // macOS Sonoma (14.x) = Darwin 23.x, uses new System Settings URL scheme
-  if (majorVersion >= 23) {
-    const sectionMap: Record<string, string> = {
-      Privacy_Microphone: 'x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone',
-      Privacy_ScreenCapture: 'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture'
-    };
-    return sectionMap[privacySection] ?? `x-apple.systempreferences:com.apple.preference.security?${privacySection}`;
-  }
-
-  return `x-apple.systempreferences:com.apple.preference.security?${privacySection}`;
-};
+const getSystemSettingsUrl = (privacySection: string) =>
+  `x-apple.systempreferences:com.apple.preference.security?${privacySection}`;
 
 const promptSystemPreferences = (options: {message: string; detail: string; systemPreferencesPath: string}) => async ({hasAsked}: {hasAsked?: boolean} = {}) => {
   if (hasAsked || isDialogShowing) {
@@ -56,22 +27,25 @@ const promptSystemPreferences = (options: {message: string; detail: string; syst
   }
 
   isDialogShowing = true;
-  await ensureDockIsShowing(async () => {
-    const {response} = await dialog.showMessageBox({
-      type: 'warning',
-      buttons: ['Open System Settings', 'Cancel'],
-      defaultId: 0,
-      message: options.message,
-      detail: options.detail,
-      cancelId: 1
-    });
-    isDialogShowing = false;
+  try {
+    await ensureDockIsShowing(async () => {
+      const {response} = await dialog.showMessageBox({
+        type: 'warning',
+        buttons: ['Open System Settings', 'Cancel'],
+        defaultId: 0,
+        message: options.message,
+        detail: options.detail,
+        cancelId: 1
+      });
 
-    if (response === 0) {
-      await openSystemPreferences(options.systemPreferencesPath);
-      app.quit();
-    }
-  });
+      if (response === 0) {
+        await openSystemPreferences(options.systemPreferencesPath);
+        app.quit();
+      }
+    });
+  } finally {
+    isDialogShowing = false;
+  }
 
   return false;
 };
@@ -144,4 +118,3 @@ export const hasScreenCaptureAccess = () => {
     return false;
   }
 };
-

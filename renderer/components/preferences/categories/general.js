@@ -54,6 +54,7 @@ class General extends React.Component {
       toggleShortcuts,
       category,
       lossyCompression,
+      showInDock,
       shortcuts,
       shortcutMap
     } = this.props;
@@ -168,16 +169,23 @@ class General extends React.Component {
         <Item
           key="allowAnalytics"
           title="Allow analytics"
-          subtitle="Help us improve Kap by sending anonymous usage stats"
+          subtitle="Help us improve NewKap by sending anonymous usage stats"
         >
           <Switch tabIndex={tabIndex} checked={allowAnalytics} onClick={() => toggleSetting('allowAnalytics')}/>
         </Item>
         <Item
           key="openOnStartup"
           title="Start automatically"
-          subtitle="Launch Kap on system startup"
+          subtitle="Launch NewKap on system startup"
         >
           <Switch tabIndex={tabIndex} checked={openOnStartup} onClick={setOpenOnStartup}/>
+        </Item>
+        <Item
+          key="showInDock"
+          title="Show in Dock"
+          subtitle="Keep NewKap visible in the Dock as well as the menu bar"
+        >
+          <Switch tabIndex={tabIndex} checked={showInDock} onClick={() => toggleSetting('showInDock')}/>
         </Item>
         <Item
           key="pickKapturesDir"
@@ -227,7 +235,8 @@ General.propTypes = {
   category: PropTypes.string,
   shortcutMap: PropTypes.object,
   shortcuts: PropTypes.object,
-  lossyCompression: PropTypes.bool
+  lossyCompression: PropTypes.bool,
+  showInDock: PropTypes.bool
 };
 
 export default connect(
@@ -246,6 +255,7 @@ export default connect(
     loopExports,
     category,
     lossyCompression,
+    showInDock,
     shortcuts,
     shortcutMap
   }) => ({
@@ -262,6 +272,7 @@ export default connect(
     loopExports,
     category,
     lossyCompression,
+    showInDock,
     shortcuts,
     shortcutMap
   }),

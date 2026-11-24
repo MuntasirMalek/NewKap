@@ -20,7 +20,7 @@ export interface App {
 const getAppsForFormat = (format: Format) => {
   return (getAppsThatOpenExtension.sync(getFormatExtension(format)) as App[])
     .map(app => ({...app, name: decodeURI(path.parse(app.url).name)}))
-    .filter(app => !['Kap', 'Kap Beta'].includes(app.name))
+    .filter(app => !['Kap', 'Kap Beta', 'NewKap', 'NewKap Beta'].includes(app.name))
     .sort((a, b) => {
       if (a.isDefault !== b.isDefault) {
         return Number(b.isDefault) - Number(a.isDefault);

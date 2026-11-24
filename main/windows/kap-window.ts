@@ -125,7 +125,7 @@ export default class KapWindow<State = any> {
     KapWindow.windows.set(this.id, this);
 
     this.browserWindow.on('show', () => {
-      if (this.options.dock && !app.dock.isVisible) {
+      if (this.options.dock && !app.dock.isVisible()) {
         app.dock.show();
       }
     });

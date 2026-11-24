@@ -1,4 +1,4 @@
-import {screen, dialog, shell} from 'electron';
+import {screen} from 'electron';
 import {windowManager} from '../windows/manager';
 
 const pluginPromises = new Map<string, (path: string) => void>();
@@ -21,24 +21,7 @@ export const addPluginPromise = (plugin: string, resolveFunction: (path: string)
 
 const triggerPluginAction = (action: string) => (name: string) => windowManager.preferences?.open({target: {name, action}});
 
-const showPermissionError = async () => {
-  const {response} = await dialog.showMessageBox({
-    type: 'warning',
-    buttons: ['Open System Settings', 'OK'],
-    defaultId: 0,
-    message: 'Screen Recording permission required',
-    detail: 'NewKap needs Screen Recording permission.\n\n' +
-      '1. Open System Settings > Privacy & Security > Screen Recording\n' +
-      '2. Toggle NewKap ON\n' +
-      '3. Quit and relaunch NewKap'
-  });
-
-  if (response === 0) {
-    shell.openExternal('x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture');
-  }
-};
-
-// Start full-screen  no cropper windowrecording 
+// Start full-screen recording directly without opening the cropper window
 const handleRecordFullScreen = async () => {
   try {
     // Close cropper if it's open
@@ -48,19 +31,17 @@ const handleRecordFullScreen = async () => {
     const {width, height} = display.bounds;
 
     const {startRecording} = require('../aperture');
-    await startRecording({
+    const started = await startRecording({
       cropperBounds: {x: 0, y: 0, width, height},
       screenBounds: {width, height},
       displayId: display.id
     });
 
-    console.log(`Full-screen recording started on display ${display.id} (${width}x${height})`);
-  } catch (error: any) {
-    console.error('Failed to start full-screen recording:', error);
-    const errorStr = String(error?.message || error);
-    if (errorStr.includes('Cannot Record') || errorStr.includes('-11805') || errorStr.includes('not authorized')) {
-      await showPermissionError();
+    if (started) {
+      console.log(`Full-screen recording started on display ${display.id} (${width}x${height})`);
     }
+  } catch (error) {
+    console.error('Failed to start full-screen recording:', error);
   }
 };
 
@@ -83,7 +64,15 @@ const routes = new Map<string, (path: string) => void | Promise<void>>([
 ]);
 
 export const handleDeepLink = (url: string) => {
-  const {host, pathname} = new URL(url);
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(url);
+  } catch (error) {
+    console.error(`Invalid deep link URL "${url}":`, error);
+    return;
+  }
+
+  const {host, pathname} = parsedUrl;
 
   if (routes.has(host)) {
     return routes.get(host)?.(pathname.slice(1));

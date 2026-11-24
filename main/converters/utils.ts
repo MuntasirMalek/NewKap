@@ -36,8 +36,8 @@ export const extractProgressFromStderr = (stderr: string, conversionStartTime: n
   const speed = Number.parseFloat(/speed=\s*(-?\d+(,\d+)*(\.\d+(e\d+)?)?)/gm.exec(data)?.[1] ?? '0');
   const processedMs = moment.duration(/time=\s*(\d\d:\d\d:\d\d.\d\d)/gm.exec(data)?.[1] ?? 0).asMilliseconds();
 
-  if (speed > 0) {
-    const progress = processedMs / durationMs;
+  if (speed > 0 && durationMs > 0) {
+    const progress = Math.min(Math.max(processedMs / durationMs, 0), 1);
 
     // Wait 2 seconds in the conversion for speed to be stable
     // Either 2 seconds of the video or 15 seconds real time (for super slow conversion like AV1)
